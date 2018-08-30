@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "class_browser",
+    "java_class"
+]
+
+[profile.release]
+opt-level = 3
