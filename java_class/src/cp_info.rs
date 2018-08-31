@@ -1,3 +1,5 @@
+/// enum containing all JVM cp_info structs
+/// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug)]
 pub enum CPInfo {
     Class { name_index: u16 }, //name_index
@@ -17,6 +19,7 @@ pub enum CPInfo {
 }
 
 impl CPInfo {
+    /// returns the byte tag of the given `CPInfo` variant
     pub fn tag(&self) -> u8 {
         match *self {
             CPInfo::Class { .. } => 7,

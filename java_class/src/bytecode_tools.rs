@@ -2,6 +2,8 @@ use class::JavaClassReader;
 use opcodes::*;
 use opcodes::Opcode::*;
 
+/// Reads in a single opcode from a `JavaClassReader` and returns the read-in Opcode.
+/// Should never fail with a well-formed Java 8 class file.
 pub fn to_opcode(r: &mut JavaClassReader) -> Result<Opcode, ()> {
     let bytecode = r.next().or(Err(()))?;
     let ans = match bytecode {
@@ -245,6 +247,7 @@ pub fn to_opcode(r: &mut JavaClassReader) -> Result<Opcode, ()> {
     Ok(ans)
 }
 
+/// Converts an `Opcode` into bytes
 pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
     let mut args = Vec::new();
     let byte = match opcode {

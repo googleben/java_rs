@@ -1,3 +1,5 @@
+/// struct representing JVM opcodes
+/// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
 pub enum Opcode {

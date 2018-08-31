@@ -1,5 +1,7 @@
 use attributes::Attribute;
 
+/// struct representing the MethodInfo struct
+/// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug)]
 pub struct MethodInfo {
     pub access_flags: u16,

@@ -87,7 +87,7 @@ impl JavaClass {
             };
             cp_vec.insert(i as usize, x);
         };
-        let cp = match ConstantPool::new(cp_vec) {
+        let cp = match ConstantPool::new_with_info(cp_vec) {
             Ok(a) => a,
             Err(a) => return Err(io::Error::new(
                 io::ErrorKind::InvalidData, 

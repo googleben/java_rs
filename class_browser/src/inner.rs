@@ -18,6 +18,7 @@ use java_class::attributes::TargetInfo;
 use java_class::methods;
 use java_class::fields;
 use java_class::attributes;
+use std::mem;
 
 pub fn class_to_tree(class: JavaClass) -> TreeView {
     let tree = TreeView::new();
@@ -42,81 +43,10 @@ pub fn class_to_tree(class: JavaClass) -> TreeView {
     ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"minor_version", &format!("{}", class.minor_version)]);
     ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"major_version", &format!("{}", class.major_version)]);
     let constants = &class.constant_pool;
-    let cp = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"Constant Pool", &""]);
-    for i in 1..=class.constant_pool.items().len() {
-        let cp_item = &class.constant_pool[i as u16];
-        match cp_item {
-            CPInfo::Class { name_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Class", i), &get_name(constants, *name_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_index", &format!("{}", name_index)]);
-             },
-            CPInfo::Fieldref { class_index, name_and_type_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Fieldref", i), &(get_name(constants, *class_index).to_owned()+&get_name(constants, *name_and_type_index))]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
-            },
-            CPInfo::Methodref { class_index, name_and_type_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Methodref", i), &(get_name(constants, *class_index).to_owned()+&get_name(constants, *name_and_type_index))]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
-            },
-            CPInfo::InterfaceMethodref { class_index, name_and_type_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. InterfaceMethodref", i), &(get_name(constants, *class_index).to_owned()+&get_name(constants, *name_and_type_index))]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
-            },
-            CPInfo::String { string_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. String", i), &get_name(constants, *string_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"string_index", &format!("{}", string_index)]);
-            },
-            CPInfo::Integer { bytes } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Integer", i), &""]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
-            },
-            CPInfo::Float { bytes } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Float", i), &""]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
-            },
-            CPInfo::Long { bytes } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Long", i), &""]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
-            },
-            CPInfo::Double { bytes } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Double", i), &""]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
-            },
-            CPInfo::NameAndType { name_index, descriptor_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. NameAndType", i), &(get_name(constants, i as u16))]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_index", &format!("{}", name_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"descriptor_index", &format!("{}", descriptor_index)]);
-            },
-            CPInfo::Utf8 { length, bytes } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Utf8", i), &str::from_utf8(bytes).unwrap()]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"length", &format!("{}", length)]);
-                let iter_bytes = ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &str::from_utf8(bytes).unwrap()]);
-                for byte in bytes {
-                    ans.insert_with_values(Some(&iter_bytes), None, &[0, 1], &[&format!("{}", byte), &""]);
-                }
-            },
-            CPInfo::MethodHandle { reference_kind, reference_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. MethodHandle", i), &""]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"reference_kind", &format!("{}", reference_kind)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"reference_index", &format!("{}", reference_index)]);
-            },
-            CPInfo::MethodType { descriptor_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. MethodType", i), &get_name(constants, *descriptor_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"descriptor_index", &format!("{}", descriptor_index)]);
-            },
-            CPInfo::InvokeDynamic { bootstrap_method_attr_index, name_and_type_index } => { 
-                let iter_n = ans.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. InvokeDynamic", i), &get_name(constants, *name_and_type_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bootstrap_method_attr_index", &format!("{}", bootstrap_method_attr_index)]);
-                ans.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
-            },
-        }
-    }
+    insert_constant_pool(&ans, &iter, constants);
     insert_access_class(&ans, &iter, class.access_flags);
     ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"this_class", &format!("{}", class.this_class)]);
-    ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"super_class", &(format!("{}", class.super_class).to_owned()+" "+&get_name(constants, class.super_class))]);
+    ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"super_class", &(format!("{} ({})", class.super_class, get_name(constants, class.super_class)))]);
     let interfaces = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"interfaces", &""]);
     for interface in class.interfaces {
         let name = get_name(&class.constant_pool, interface);
@@ -149,10 +79,107 @@ fn get_name(cp: &ConstantPool, index: u16) -> String {
             get_name(cp, *name_index)
         },
         CPInfo::Utf8 {bytes, ..} => { str::from_utf8(bytes.as_slice()).unwrap().to_owned() },
+        CPInfo::String { string_index } => { get_name(cp, *string_index) }
         CPInfo::NameAndType { name_index, descriptor_index } => {
             (get_name(cp, *name_index).to_owned()+" "+&get_name(cp, *descriptor_index))
         },
+        CPInfo::Methodref { class_index, name_and_type_index } |
+        CPInfo::Fieldref { class_index, name_and_type_index } |
+        CPInfo::InterfaceMethodref { class_index, name_and_type_index } => {
+            get_name(cp, *class_index).to_owned()+" "+&get_name(cp, *name_and_type_index)
+        },
+        CPInfo::Integer { bytes } => {
+            format!("{}", *bytes as i32)
+        },
+        CPInfo::Float { bytes } => {
+            unsafe {
+                format!("{}", mem::transmute::<u32, f32>(*bytes))
+            }
+        },
+        CPInfo::Long { bytes } => {
+            format!("{}", *bytes as i64)
+        },
+        CPInfo::Double { bytes } => {
+            unsafe {
+                format!("{}", mem::transmute::<u64, f64>(*bytes))
+            }
+        },
         _ => "Constant Pool index did not point to Utf8".to_owned()
+    }
+}
+
+fn insert_constant_pool(store: &TreeStore, iter: &TreeIter, constants: &ConstantPool) {
+    let cp = store.insert_with_values(Some(&iter), None, &[0, 1], &[&"Constant Pool", &""]);
+    for i in 1..=constants.items().len() as u16 {
+        let cp_item = &constants[i];
+        match cp_item {
+            CPInfo::Class { name_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Class", i), &get_name(constants, *name_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_index", &format!("{}", name_index)]);
+             },
+            CPInfo::Fieldref { class_index, name_and_type_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Fieldref", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
+            },
+            CPInfo::Methodref { class_index, name_and_type_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Methodref", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
+            },
+            CPInfo::InterfaceMethodref { class_index, name_and_type_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. InterfaceMethodref", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
+            },
+            CPInfo::String { string_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. String", i), &get_name(constants, *string_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"string_index", &format!("{}", string_index)]);
+            },
+            CPInfo::Integer { bytes } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Integer", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
+            },
+            CPInfo::Float { bytes } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Float", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
+            },
+            CPInfo::Long { bytes } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Long", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
+            },
+            CPInfo::Double { bytes } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Double", i), &get_name(constants, i)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &format!("{}", bytes)]);
+            },
+            CPInfo::NameAndType { name_index, descriptor_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. NameAndType", i), &(get_name(constants, i as u16))]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_index", &format!("{}", name_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"descriptor_index", &format!("{}", descriptor_index)]);
+            },
+            CPInfo::Utf8 { length, bytes } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Utf8", i), &str::from_utf8(bytes).unwrap()]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"length", &format!("{}", length)]);
+                let iter_bytes = store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bytes", &str::from_utf8(bytes).unwrap()]);
+                for byte in bytes {
+                    store.insert_with_values(Some(&iter_bytes), None, &[0, 1], &[&format!("{}", byte), &""]);
+                }
+            },
+            CPInfo::MethodHandle { reference_kind, reference_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. MethodHandle", i), &get_name(constants, *reference_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"reference_kind", &format!("{}", reference_kind)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"reference_index", &format!("{}", reference_index)]);
+            },
+            CPInfo::MethodType { descriptor_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. MethodType", i), &get_name(constants, *descriptor_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"descriptor_index", &format!("{}", descriptor_index)]);
+            },
+            CPInfo::InvokeDynamic { bootstrap_method_attr_index, name_and_type_index } => { 
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. InvokeDynamic", i), &get_name(constants, *name_and_type_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bootstrap_method_attr_index", &format!("{}", bootstrap_method_attr_index)]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
+            },
+        }
     }
 }
 
@@ -216,7 +243,7 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"Code", &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"max_stack", &format!("{}", max_stack)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"max_locals", &format!("{}", max_locals)]);
-                insert_code(store, &iter_b, code);
+                insert_code(store, &iter_b, code, cp);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"exception_table", &""]);
                 for i in 0..exception_table.len() {
                     let e = &exception_table[i];
@@ -544,7 +571,7 @@ fn insert_vti(store: &TreeStore, iter: &TreeIter, vti: VerificationTypeInfo) {
     }
 }
 
-fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
+fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &ConstantPool) {
     let iter_a = store.insert_with_values(Some(&iter), None, &[0, 1], &[&"Code", &""]);
     for op in code {
         match op {
@@ -574,7 +601,7 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aload_3", &""]);
             },
             anewarray { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"anewarray", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"anewarray", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             areturn => {
@@ -622,7 +649,7 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"castore", &""]);
             },
             checkcast { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"checkcast", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"checkcast", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             d2f => {
@@ -807,11 +834,11 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fsub", &""]);
             },
             getfield { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"getfield", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"getfield", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             getstatic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"getstatic", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"getstatic", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             goto { branch } => {
@@ -968,28 +995,28 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ineg", &""]);
             },
             instanceof { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"instanceof", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"instanceof", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             invokedynamic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokedynamic", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokedynamic", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             invokeinterface { index, count } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokeinterface", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokeinterface", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"count", &format!("{}", count)]);
             },
             invokespecial { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokespecial", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokespecial", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             invokestatic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokestatic", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokestatic", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             invokevirtual { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokevirtual", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokevirtual", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             ior => {
@@ -1071,15 +1098,15 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lconst_1", &""]);
             },
             ldc { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc", &get_name(cp, index.into())]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             ldc_w { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc_w", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc_w", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             ldc2_w { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc2_w", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc2_w", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             ldiv => {
@@ -1162,16 +1189,27 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"monitorexit", &""]);
             },
             multianewarray { index, dimensions } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"multianewarray", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"multianewarray", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"dimensions", &format!("{}", dimensions)]);
             },
             new { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"new", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"new", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             newarray { atype } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"newarray", &""]);
+                let type_ = match atype {
+                    4 => "T_BOOLEAN",
+                    5 => "T_CHAR",
+                    6 => "T_FLOAT",
+                    7 => "T_DOUBLE",
+                    8 => "T_BYTE",
+                    9 => "T_SHORT",
+                    10 => "T_INT",
+                    11 => "T_LONG",
+                    _ => "Invalid type code"
+                };
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"newarray", &type_]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"atype", &format!("{}", atype)]);
             },
             nop => {
@@ -1184,11 +1222,11 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>) {
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"pop2", &""]);
             },
             putfield { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"putfield", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"putfield", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             putstatic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"putstatic", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"putstatic", &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
             },
             ret { index } => {

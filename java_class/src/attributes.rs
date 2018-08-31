@@ -1,5 +1,7 @@
 use opcodes::Opcode;
 
+/// enum containing JVM Attributes
+/// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug)]
 pub enum Attribute {
     ConstantValue { 
