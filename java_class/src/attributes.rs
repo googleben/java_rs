@@ -202,10 +202,10 @@ pub enum VerificationTypeInfo {
 
 #[derive(Debug)]
 pub enum StackMapFrame {
-    SameFrame, //0-63
-    SameLocals1Item { stack: VerificationTypeInfo }, // 64-127
+    SameFrame { offset_delta: u8 }, //0-63
+    SameLocals1Item { offset_delta: u8, stack: VerificationTypeInfo }, // 64-127
     SameLocals1ItemExtended { offset_delta: u16, stack: VerificationTypeInfo }, //247
-    ChopFrame { offset_delta: u16 }, //248-250
+    ChopFrame { absent_locals: u8, offset_delta: u16 }, //248-250
     SameFrameExtended { offset_delta: u16 }, //251
     AppendFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo> }, //252-254
     FullFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo>, stack: Vec<VerificationTypeInfo> } //255

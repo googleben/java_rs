@@ -217,8 +217,9 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
                     for _i in 0..num {
                         let tag = r.next().or(Err("read failure"))?;
                         ans.push(match tag {
-                            0...63 => StackMapFrame::SameFrame,
+                            0...63 => StackMapFrame::SameFrame { offset_delta: tag },
                             64...127 => StackMapFrame::SameLocals1Item {
+                                offset_delta: tag-64,
                                 stack: read_verification_type_info(r)?
                             },
                             247 => StackMapFrame::SameLocals1ItemExtended {
@@ -226,6 +227,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
                                 stack: read_verification_type_info(r)?
                             },
                             248...250 => StackMapFrame::ChopFrame {
+                                absent_locals: 251 - tag,
                                 offset_delta: r.next16().or(Err("read failure"))?
                             },
                             251 => StackMapFrame::SameFrameExtended {

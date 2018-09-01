@@ -185,9 +185,7 @@ pub fn to_opcode(r: &mut JavaClassReader) -> Result<Opcode, ()> {
             let npairs = high - low + 1;
             let mut jump_offsets = Vec::new();
             for _ in 0..npairs {
-                jump_offsets.push(
-                    (r.next32().or(Err(()))?, 
-                    r.next32().or(Err(()))?));
+                jump_offsets.push(r.next32().or(Err(()))?);
             }
             tableswitch { default, low, high, jump_offsets }
         },
@@ -229,9 +227,17 @@ pub fn to_opcode(r: &mut JavaClassReader) -> Result<Opcode, ()> {
         0xc3 => monitorexit,
         0xc4 => {
             let opcode = r.next().or(Err(()))?;
-            wide { opcode,
-                index: r.next16().or(Err(()))?,
-                count: if opcode==0x84 { r.next16().or(Err(()))? } else { 0 } }
+            if opcode == 0x84 {
+                wide_iinc {
+                    index: r.next16().or(Err(()))?,
+                    const_: r.next16().or(Err(()))?,
+                }
+            } else {
+                wide { 
+                    opcode,
+                    index: r.next16().or(Err(()))?
+                }
+            }
         }
         0xc5 => multianewarray { index: r.next16().or(Err(()))?, dimensions: r.next().or(Err(()))? },
         0xc6 => ifnull { branch: r.next16().or(Err(()))? },
@@ -425,9 +431,8 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             args.push((default >> 24) as u8); args.push((default >> 16) as u8); args.push((default >> 8) as u8); args.push(default as u8);
             args.push((low >> 24) as u8); args.push((low >> 16) as u8); args.push((low >> 8) as u8); args.push(low as u8);
             args.push((high >> 24) as u8); args.push((high >> 16) as u8); args.push((high >> 8) as u8); args.push(high as u8);
-            for (a, b) in jump_offsets {
+            for a in jump_offsets {
                 args.push((a >> 24) as u8); args.push((a >> 16) as u8); args.push((a >> 8) as u8); args.push(a as u8);
-                args.push((b >> 24) as u8); args.push((b >> 16) as u8); args.push((b >> 8) as u8); args.push(b as u8);
             }
             0xaa
         },
@@ -463,12 +468,17 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         instanceof { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xc1 },
         monitorenter => 0xc2,
         monitorexit => 0xc3,
-        wide { opcode, index, count } => {
+        wide { opcode, index } => {
             args.push(opcode);
             args.push((index >> 8) as u8); args.push(index as u8);
-            args.push((count >> 8) as u8); args.push(count as u8); 
             0xc4
         },
+        wide_iinc { index, const_ } => {
+            args.push(0x84);
+            args.push((index >> 8) as u8); args.push(index as u8);
+            args.push((const_ >> 8) as u8); args.push(const_ as u8);
+            0xc4
+        }
         multianewarray { index, dimensions } => { args.push((index >> 8) as u8); args.push(index as u8); args.push(dimensions); 0xc5 },
         ifnull { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xc6 }
         ifnonnull { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xc7 }

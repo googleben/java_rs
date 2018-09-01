@@ -204,8 +204,9 @@ pub enum Opcode {
     sastore,
     sipush { val: u16 },
     swap,
-    tableswitch { default: u32, low: u32, high: u32, jump_offsets: Vec<(u32, u32)> },
-    wide { opcode: u8, index: u16, count: u16 },
+    tableswitch { default: u32, low: u32, high: u32, jump_offsets: Vec<u32> },
+    wide { opcode: u8, index: u16 },
+    wide_iinc { index: u16, const_: u16 },
 
     reserved,
     impdep1,

@@ -243,7 +243,8 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"Code", &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"max_stack", &format!("{}", max_stack)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"max_locals", &format!("{}", max_locals)]);
-                insert_code(store, &iter_b, code, cp);
+                let mut pos = 0;
+                insert_code(store, &iter_b, code, cp, &mut pos);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"exception_table", &""]);
                 for i in 0..exception_table.len() {
                     let e = &exception_table[i];
@@ -253,51 +254,62 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                     store.insert_with_values(Some(&iter_d), None, &[0, 1], &[&"handler_pc", &format!("{}", e.handler_pc)]);
                     store.insert_with_values(Some(&iter_d), None, &[0, 1], &[&"catch_type", &format!("{}", e.catch_type)]);
                 }
-                insert_attributes(cp, store, &iter_c, attributes);
+                insert_attributes(cp, store, &iter_b, attributes);
             },
             StackMapTable { entries } => {
                 let iter_ba = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"StackMapTable", &""]);
                 let iter_b = store.insert_with_values(Some(&iter_ba), None, &[0, 1], &[&"Entries", &""]);
+                let mut index: i32 = -1;
                 for entry in entries {
                     match entry {
-                        StackMapFrame::SameFrame => {
-                            store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameFrame", &""]);
+                        StackMapFrame::SameFrame { offset_delta } => {
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameFrame", &format!("{}", index)]);
+                            store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
                         },
-                        StackMapFrame::SameLocals1Item { stack } => {
-                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameLocals1Item", &""]);
-                            insert_vti(store, &iter_c, stack);
+                        StackMapFrame::SameLocals1Item { offset_delta, stack } => {
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameLocals1Item", &format!("{}", index)]);
+                            store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
+                            insert_vti(store, &iter_c, stack, cp);
                         },
                         StackMapFrame::SameLocals1ItemExtended { offset_delta, stack } => {
-                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameLocals1ItemExtended", &""]);
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameLocals1ItemExtended", &format!("{}", index)]);
                             store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
-                            insert_vti(store, &iter_c, stack);
+                            insert_vti(store, &iter_c, stack, cp);
                         },
-                        StackMapFrame::ChopFrame { offset_delta } => {
-                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"ChopFrame", &""]);
+                        StackMapFrame::ChopFrame { absent_locals, offset_delta } => {
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"ChopFrame", &format!("{}", index)]);
                             store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
+                            store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"absent_locals", &format!("{}", absent_locals)]);
                         },
                         StackMapFrame::SameFrameExtended { offset_delta } => {
-                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameFrameExtended", &""]);
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameFrameExtended", &format!("{}", index)]);
                             store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
                         },
                         StackMapFrame::AppendFrame { offset_delta, locals } => {
-                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameLocals1ItemExtended", &""]);
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"SameLocals1ItemExtended", &format!("{}", index)]);
                             store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
                             let iter_d = store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"locals", &""]);
                             for vti in locals {
-                                insert_vti(store, &iter_d, vti);
+                                insert_vti(store, &iter_d, vti, cp);
                             }
                         },
                         StackMapFrame::FullFrame { offset_delta, locals, stack } => {
-                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"FullFrame", &""]);
+                            index += offset_delta as i32 + 1;
+                            let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"FullFrame", &format!("{}", index)]);
                             store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"offset_delta", &format!("{}", offset_delta)]);
                             let iter_d = store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"locals", &""]);
                             for vti in locals {
-                                insert_vti(store, &iter_d, vti);
+                                insert_vti(store, &iter_d, vti, cp);
                             }
                             let iter_d = store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"stack", &""]);
                             for vti in stack {
-                                insert_vti(store, &iter_d, vti);
+                                insert_vti(store, &iter_d, vti, cp);
                             }
                         },
                     }
@@ -348,7 +360,7 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                 for t in line_number_table {
                     let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"Entry", &""]);
                     store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"start_pc", &format!("{}", t.start_pc)]);
-                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"line_nubmer", &format!("{}", t.line_number)]);
+                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"line_number", &format!("{}", t.line_number)]);
                 }
             },
             LocalVariableTable { local_variable_table } => {
@@ -537,7 +549,7 @@ fn insert_element_value(store: &TreeStore, iter: &TreeIter, val: &ElementValue) 
             }
 }
 
-fn insert_vti(store: &TreeStore, iter: &TreeIter, vti: VerificationTypeInfo) {
+fn insert_vti(store: &TreeStore, iter: &TreeIter, vti: VerificationTypeInfo, cp: &ConstantPool) {
     match vti {
         VerificationTypeInfo::Top => {
             store.insert_with_values(Some(&iter), None, &[0, 1], &[&"VerificationTypeInfo", &"Top"]);
@@ -555,7 +567,7 @@ fn insert_vti(store: &TreeStore, iter: &TreeIter, vti: VerificationTypeInfo) {
             store.insert_with_values(Some(&iter), None, &[0, 1], &[&"VerificationTypeInfo", &"UninitializedThis"]);
         },
         VerificationTypeInfo::Object { cpool_index } => {
-            let iter_a = store.insert_with_values(Some(&iter), None, &[0, 1], &[&"VerificationTypeInfo", &"Object"]);
+            let iter_a = store.insert_with_values(Some(&iter), None, &[0, 1], &[&"VerificationTypeInfo", &format!("Object ({})", get_name(cp, cpool_index))]);
             store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"cpool_index", &format!("{}", cpool_index)]);
         },
         VerificationTypeInfo::UninitializedVariable { offset } => {
@@ -571,631 +583,820 @@ fn insert_vti(store: &TreeStore, iter: &TreeIter, vti: VerificationTypeInfo) {
     }
 }
 
-fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &ConstantPool) {
+fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &ConstantPool, pos: &mut u32) {
     let iter_a = store.insert_with_values(Some(&iter), None, &[0, 1], &[&"Code", &""]);
     for op in code {
         match op {
-         aaload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aaload", &""]);
+            aaload => {
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aaload", pos), &""]);
+                *pos+=1;
             },
             aastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aastore", pos), &""]);
+                *pos+=1;
             },
             aconst_null => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aconst_null", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aconst_null", pos), &""]);
+                *pos+=1;
             },
             aload { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aload", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aload", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             aload_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aload_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aload_0", pos), &""]);
+                *pos+=1;
             },
             aload_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aload_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aload_1", pos), &""]);
+                *pos+=1;
             },
             aload_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aload_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aload_2", pos), &""]);
+                *pos+=1;
             },
             aload_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"aload_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. aload_3", pos), &""]);
+                *pos+=1;
             },
             anewarray { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"anewarray", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. anewarray", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             areturn => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"areturn", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. areturn", pos), &""]);
+                *pos+=1;
             },
             arraylength => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"arraylength", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. arraylength", pos), &""]);
+                *pos+=1;
             },
             astore { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"astore", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. astore", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             astore_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"astore_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. astore_0", pos), &""]);
+                *pos+=1;
             },
             astore_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"astore_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. astore_1", pos), &""]);
+                *pos+=1;
             },
             astore_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"astore_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. astore_2", pos), &""]);
+                *pos+=1;
             },
             astore_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"astore_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. astore_3", pos), &""]);
+                *pos+=1;
             },
             athrow => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"athrow", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. athrow", pos), &""]);
+                *pos+=1;
             },
             baload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"baload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. baload", pos), &""]);
+                *pos+=1;
             },
             bastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"bastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. bastore", pos), &""]);
+                *pos+=1;
             },
             bipush { val } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"bipush", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. bipush", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"val", &format!("{}", val)]);
+                *pos+=2;
             },
             breakpoint => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"breakpoint", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. breakpoint", pos), &""]);
+                *pos+=1;
             },
             caload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"caload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. caload", pos), &""]);
+                *pos+=1;
             },
             castore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"castore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. castore", pos), &""]);
+                *pos+=1;
             },
             checkcast { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"checkcast", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. checkcast", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             d2f => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"d2f", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. d2f", pos), &""]);
+                *pos+=1;
             },
             d2i => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"d2i", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. d2i", pos), &""]);
+                *pos+=1;
             },
             d2l => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"d2l", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. d2l", pos), &""]);
+                *pos+=1;
             },
             dadd => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dadd", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dadd", pos), &""]);
+                *pos+=1;
             },
             daload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"daload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. daload", pos), &""]);
+                *pos+=1;
             },
             dastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dastore", pos), &""]);
+                *pos+=1;
             },
             dcmpg => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dcmpg", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dcmpg", pos), &""]);
+                *pos+=1;
             },
             dcmpl => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dcmpl", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dcmpl", pos), &""]);
+                *pos+=1;
             },
             dconst_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dconst_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dconst_0", pos), &""]);
+                *pos+=1;
             },
             dconst_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dconst_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dconst_1", pos), &""]);
+                *pos+=1;
             },
             ddiv => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ddiv", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ddiv", pos), &""]);
+                *pos+=1;
             },
             dload { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dload", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dload", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             dload_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dload_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dload_0", pos), &""]);
+                *pos+=1;
             },
             dload_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dload_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dload_1", pos), &""]);
+                *pos+=1;
             },
             dload_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dload_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dload_2", pos), &""]);
+                *pos+=1;
             },
             dload_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dload_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dload_3", pos), &""]);
+                *pos+=1;
             },
             dmul => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dmul", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dmul", pos), &""]);
+                *pos+=1;
             },
             dneg => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dneg", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dneg", pos), &""]);
+                *pos+=1;
             },
             drem => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"drem", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. drem", pos), &""]);
+                *pos+=1;
             },
             dreturn => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dreturn", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dreturn", pos), &""]);
+                *pos+=1;
             },
             dstore { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dstore", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dstore", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             dstore_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dstore_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dstore_0", pos), &""]);
+                *pos+=1;
             },
             dstore_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dstore_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dstore_1", pos), &""]);
+                *pos+=1;
             },
             dstore_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dstore_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dstore_2", pos), &""]);
+                *pos+=1;
             },
             dstore_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dstore_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dstore_3", pos), &""]);
+                *pos+=1;
             },
             dsub => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dsub", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dsub", pos), &""]);
+                *pos+=1;
             },
             dup => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dup", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dup", pos), &""]);
+                *pos+=1;
             },
             dup_x1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dup_x1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dup_x1", pos), &""]);
+                *pos+=1;
             },
             dup_x2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dup_x2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dup_x2", pos), &""]);
+                *pos+=1;
             },
             dup2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dup2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dup2", pos), &""]);
+                *pos+=1;
             },
             dup2_x1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dup2_x1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dup2_x1", pos), &""]);
+                *pos+=1;
             },
             dup2_x2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"dup2_x2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. dup2_x2", pos), &""]);
+                *pos+=1;
             },
             f2d => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"f2d", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. f2d", pos), &""]);
+                *pos+=1;
             },
             f2i => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"f2i", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. f2i", pos), &""]);
+                *pos+=1;
             },
             f2l => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"f2l", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. f2l", pos), &""]);
+                *pos+=1;
             },
             fadd => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fadd", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fadd", pos), &""]);
+                *pos+=1;
             },
             faload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"faload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. faload", pos), &""]);
+                *pos+=1;
             },
             fastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fastore", pos), &""]);
+                *pos+=1;
             },
             fcmpg => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fcmpg", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fcmpg", pos), &""]);
+                *pos+=1;
             },
             fcmpl => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fcmpl", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fcmpl", pos), &""]);
+                *pos+=1;
             },
             fconst_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fconst_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fconst_0", pos), &""]);
+                *pos+=1;
             },
             fconst_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fconst_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fconst_1", pos), &""]);
+                *pos+=1;
             },
             fconst_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fconst_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fconst_2", pos), &""]);
+                *pos+=1;
             },
             fdiv => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fdiv", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fdiv", pos), &""]);
+                *pos+=1;
             },
             fload { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fload", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fload", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             fload_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fload_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fload_0", pos), &""]);
+                *pos+=1;
             },
             fload_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fload_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fload_1", pos), &""]);
+                *pos+=1;
             },
             fload_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fload_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fload_2", pos), &""]);
+                *pos+=1;
             },
             fload_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fload_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fload_3", pos), &""]);
+                *pos+=1;
             },
             fmul => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fmul", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fmul", pos), &""]);
+                *pos+=1;
             },
             fneg => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fneg", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fneg", pos), &""]);
+                *pos+=1;
             },
             frem => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"frem", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. frem", pos), &""]);
+                *pos+=1;
             },
             freturn => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"freturn", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. freturn", pos), &""]);
+                *pos+=1;
             },
             fstore { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fstore", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fstore", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             fstore_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fstore_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fstore_0", pos), &""]);
+                *pos+=1;
             },
             fstore_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fstore_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fstore_1", pos), &""]);
+                *pos+=1;
             },
             fstore_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fstore_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fstore_2", pos), &""]);
+                *pos+=1;
             },
             fstore_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fstore_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fstore_3", pos), &""]);
+                *pos+=1;
             },
             fsub => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"fsub", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. fsub", pos), &""]);
+                *pos+=1;
             },
             getfield { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"getfield", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. getfield", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             getstatic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"getstatic", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. getstatic", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             goto { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"goto", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. goto", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             goto_w { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"goto_w", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. goto_w", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=5;
             },
             i2b => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"i2b", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. i2b", pos), &""]);
+                *pos+=1;
             },
             i2c => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"i2c", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. i2c", pos), &""]);
+                *pos+=1;
             },
             i2d => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"i2d", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. i2d", pos), &""]);
+                *pos+=1;
             },
             i2f => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"i2f", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. i2f", pos), &""]);
+                *pos+=1;
             },
             i2l => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"i2l", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. i2l", pos), &""]);
+                *pos+=1;
             },
             i2s => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"i2s", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. i2s", pos), &""]);
+                *pos+=1;
             },
             iadd => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iadd", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iadd", pos), &""]);
+                *pos+=1;
             },
             iaload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iaload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iaload", pos), &""]);
+                *pos+=1;
             },
             iand => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iand", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iand", pos), &""]);
+                *pos+=1;
             },
             iastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iastore", pos), &""]);
+                *pos+=1;
             },
             iconst_m1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_m1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_m1", pos), &""]);
+                *pos+=1;
             },
             iconst_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_0", pos), &""]);
+                *pos+=1;
             },
             iconst_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_1", pos), &""]);
+                *pos+=1;
             },
             iconst_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_2", pos), &""]);
+                *pos+=1;
             },
             iconst_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_3", pos), &""]);
+                *pos+=1;
             },
             iconst_4 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_4", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_4", pos), &""]);
+                *pos+=1;
             },
             iconst_5 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iconst_5", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iconst_5", pos), &""]);
+                *pos+=1;
             },
             idiv => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"idiv", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. idiv", pos), &""]);
+                *pos+=1;
             },
             if_acmpeq { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_acmpeq", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_acmpeq", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_acmpne { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_acmpne", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_acmpne", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_icmpeq { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_icmpeq", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_icmpeq", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_icmpge { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_icmpge", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_icmpge", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_icmpgt { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_icmpgt", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_icmpgt", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_icmple { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_icmple", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_icmple", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_icmplt { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_icmplt", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_icmplt", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             if_icmpne { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"if_icmpne", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. if_icmpne", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifeq { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifeq", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifeq", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifge { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifge", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifge", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifgt { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifgt", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifgt", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifle { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifle", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifle", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             iflt { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iflt", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iflt", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifne { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifne", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifne", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifnonnull { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifnonnull", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifnonnull", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             ifnull { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ifnull", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ifnull", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             iinc { index, const_ } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iinc", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iinc", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"const", &format!("{}", const_)]);
+                *pos+=3;
             },
             iload { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iload", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iload", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             iload_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iload_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iload_0", pos), &""]);
+                *pos+=1;
             },
             iload_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iload_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iload_1", pos), &""]);
+                *pos+=1;
             },
             iload_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iload_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iload_2", pos), &""]);
+                *pos+=1;
             },
             iload_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iload_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iload_3", pos), &""]);
+                *pos+=1;
             },
             imul => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"imul", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. imul", pos), &""]);
+                *pos+=1;
             },
             ineg => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ineg", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ineg", pos), &""]);
+                *pos+=1;
             },
             instanceof { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"instanceof", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. instanceof", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             invokedynamic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokedynamic", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. invokedynamic", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             invokeinterface { index, count } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokeinterface", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. invokeinterface", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"count", &format!("{}", count)]);
+                *pos+=4;
             },
             invokespecial { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokespecial", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. invokespecial", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             invokestatic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokestatic", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. invokestatic", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             invokevirtual { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"invokevirtual", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. invokevirtual", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             ior => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ior", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ior", pos), &""]);
+                *pos+=1;
             },
             irem => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"irem", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. irem", pos), &""]);
+                *pos+=1;
             },
             ireturn => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ireturn", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ireturn", pos), &""]);
+                *pos+=1;
             },
             ishl => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ishl", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ishl", pos), &""]);
+                *pos+=1;
             },
             ishr => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ishr", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ishr", pos), &""]);
+                *pos+=1;
             },
             istore { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"istore", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. istore", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             istore_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"istore_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. istore_0", pos), &""]);
+                *pos+=1;
             },
             istore_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"istore_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. istore_1", pos), &""]);
+                *pos+=1;
             },
             istore_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"istore_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. istore_2", pos), &""]);
+                *pos+=1;
             },
             istore_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"istore_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. istore_3", pos), &""]);
+                *pos+=1;
             },
             isub => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"isub", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. isub", pos), &""]);
+                *pos+=1;
             },
             iushr => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"iushr", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. iushr", pos), &""]);
+                *pos+=1;
             },
             ixor => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ixor", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ixor", pos), &""]);
+                *pos+=1;
             },
             jsr { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"jsr", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. jsr", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=3;
             },
             jsr_w { branch } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"jsr_w", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{}", branch)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. jsr_w", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"branch", &format!("{} ({})", branch, branch as u32+*pos)]);
+                *pos+=5;
             },
             l2d => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"l2d", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. l2d", pos), &""]);
+                *pos+=1;
             },
             l2f => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"l2f", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. l2f", pos), &""]);
+                *pos+=1;
             },
             l2i => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"l2i", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. l2i", pos), &""]);
+                *pos+=1;
             },
             ladd => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ladd", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ladd", pos), &""]);
+                *pos+=1;
             },
             laload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"laload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. laload", pos), &""]);
+                *pos+=1;
             },
             land => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"land", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. land", pos), &""]);
+                *pos+=1;
             },
             lastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lastore", pos), &""]);
+                *pos+=1;
             },
             lcmp => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lcmp", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lcmp", pos), &""]);
+                *pos+=1;
             },
             lconst_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lconst_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lconst_0", pos), &""]);
+                *pos+=1;
             },
             lconst_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lconst_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lconst_1", pos), &""]);
+                *pos+=1;
             },
             ldc { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc", &get_name(cp, index.into())]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ldc", pos), &get_name(cp, index.into())]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             ldc_w { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc_w", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ldc_w", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             ldc2_w { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldc2_w", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ldc2_w", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             ldiv => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ldiv", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ldiv", pos), &""]);
+                *pos+=1;
             },
             lload_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lload_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lload_0", pos), &""]);
+                *pos+=1;
             },
             lload_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lload_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lload_1", pos), &""]);
+                *pos+=1;
             },
             lload_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lload_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lload_2", pos), &""]);
+                *pos+=1;
             },
             lload_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lload_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lload_3", pos), &""]);
+                *pos+=1;
             },
             lload { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lload", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lload", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             lmul => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lmul", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lmul", pos), &""]);
+                *pos+=1;
             },
             lneg => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lneg", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lneg", pos), &""]);
+                *pos+=1;
             },
             lookupswitch { default, match_offset_pairs } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lookupswitch", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"default", &format!("{}", default)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lookupswitch", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"default", &format!("{} ({})", default, default as u32+*pos)]);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"match_offset_pairs", &""]);
-                for pair in match_offset_pairs {
-                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("{}", pair.0), &format!("{}", pair.1)]);
+                for pair in &match_offset_pairs {
+                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("{}", pair.0), &format!("{} ({})", pair.1, pair.1 as u32+*pos)]);
                 }
+                *pos+=5 + (&match_offset_pairs.len()*8) as u32;
             },
             lor => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lor", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lor", pos), &""]);
+                *pos+=1;
             },
             lrem => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lrem", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lrem", pos), &""]);
+                *pos+=1;
             },
             lreturn => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lreturn", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lreturn", pos), &""]);
+                *pos+=1;
             },
             lshl => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lshl", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lshl", pos), &""]);
+                *pos+=1;
             },
             lshr => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lshr", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lshr", pos), &""]);
+                *pos+=1;
             },
             lstore { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lstore", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lstore", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             lstore_0 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lstore_0", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lstore_0", pos), &""]);
+                *pos+=1;
             },
             lstore_1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lstore_1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lstore_1", pos), &""]);
+                *pos+=1;
             },
             lstore_2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lstore_2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lstore_2", pos), &""]);
+                *pos+=1;
             },
             lstore_3 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lstore_3", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lstore_3", pos), &""]);
+                *pos+=1;
             },
             lsub => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lsub", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lsub", pos), &""]);
+                *pos+=1;
             },
             lushr => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lushr", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lushr", pos), &""]);
+                *pos+=1;
             },
             lxor => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"lxor", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lxor", pos), &""]);
+                *pos+=1;
             },
             monitorenter => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"monitorenter", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. monitorenter", pos), &""]);
+                *pos+=1;
             },
             monitorexit => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"monitorexit", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. monitorexit", pos), &""]);
+                *pos+=1;
             },
             multianewarray { index, dimensions } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"multianewarray", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. multianewarray", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"dimensions", &format!("{}", dimensions)]);
+                *pos+=4;
             },
             new { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"new", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. new", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             newarray { atype } => {
                 let type_ = match atype {
@@ -1209,70 +1410,93 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &Const
                     11 => "T_LONG",
                     _ => "Invalid type code"
                 };
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"newarray", &type_]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. newarray", pos), &type_]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"atype", &format!("{}", atype)]);
+                *pos+=2;
             },
             nop => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"nop", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. nop", pos), &""]);
+                *pos+=1;
             },
             pop => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"pop", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. pop", pos), &""]);
+                *pos+=1;
             },
             pop2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"pop2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. pop2", pos), &""]);
+                *pos+=1;
             },
             putfield { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"putfield", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. putfield", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             putstatic { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"putstatic", &get_name(cp, index)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. putstatic", pos), &get_name(cp, index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=3;
             },
             ret { index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ret", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. ret", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                *pos+=2;
             },
             return_ => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"return_", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. return", pos), &""]);
+                *pos+=1;
             },
             saload => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"saload", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. saload", pos), &""]);
+                *pos+=1;
             },
             sastore => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"sastore", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. sastore", pos), &""]);
+                *pos+=1;
             },
             sipush { val } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"sipush", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. sipush", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"val", &format!("{}", val)]);
+                *pos+=3;
             },
             swap => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"swap", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. swap", pos), &""]);
+                *pos+=1;
             },
             tableswitch { default, low, high, jump_offsets } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"tableswitch", &""]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"default", &format!("{}", default)]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. tableswitch", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"default", &format!("{} ({})", default, default as u32+*pos)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"low", &format!("{}", low)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"high", &format!("{}", high)]);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"match_offset_pairs", &""]);
-                for pair in jump_offsets {
-                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("{}", pair.0), &format!("{}", pair.1)]);
+                for offset in &jump_offsets {
+                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("{} ({})", offset, *offset+*pos), &""]);
                 }
+                *pos+=13 + (jump_offsets.len()*8) as u32;
             },
-            wide { opcode, index, count } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"wide", &""]);
+            wide { opcode, index} => {
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. wide", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"opcode", &format!("{}", opcode)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
-                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"count", &format!("{}", count)]);
+                *pos+=4;
+            },
+            wide_iinc { index, const_ } => {
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. wide", pos), &""]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"opcode", &format!("{}", 0x84)]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"index", &format!("{}", index)]);
+                store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"const", &format!("{}", const_)]);
+                *pos+=6;
             },
             reserved => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"reserved", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. reserved", pos), &""]);
+                *pos+=1;
             },
             impdep1 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"impdep1", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. impdep1", pos), &""]);
+                *pos+=1;
             },
             impdep2 => {
-                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"impdep2", &""]);
+                store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. impdep2", pos), &""]);
+                *pos+=1;
             }
         }
     }
