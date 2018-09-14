@@ -11,6 +11,7 @@ pub enum CPInfo {
     Float { bytes: u32 }, //bytes
     Long { bytes: u64 }, //bytes
     Double { bytes: u64 }, //bytes
+    LongDoubleDummy,
     NameAndType { name_index: u16, descriptor_index: u16 }, //name_index, descriptor_index
     Utf8 { length: u16, bytes: Vec<u8> }, //length, bytes
     MethodHandle { reference_kind: u8, reference_index: u16 }, //reference_kind, reference_index
@@ -30,6 +31,7 @@ impl CPInfo {
             CPInfo::Integer { .. } => 3,
             CPInfo::Float { .. } => 4,
             CPInfo::Long { .. } => 5,
+            CPInfo::LongDoubleDummy => 255,
             CPInfo::Double { .. } => 6,
             CPInfo::NameAndType { .. } => 12,
             CPInfo::Utf8 { .. } => 1,

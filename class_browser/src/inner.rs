@@ -54,7 +54,7 @@ pub fn class_to_tree(class: JavaClass) -> TreeView {
     }
     let fields = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"Fields", &""]);
     for f in class.fields {
-        let field = ans.insert_with_values(Some(&fields), None, &[0, 1], &[&"Field", &get_name(&class.constant_pool, f.name_index)]);
+        let field = ans.insert_with_values(Some(&fields), None, &[0, 1], &[&"Field", &format!("{} {}", get_name(&class.constant_pool, f.name_index), get_name(&class.constant_pool, f.descriptor_index))]);
         insert_access_field(&ans, &field, f.access_flags);
         ans.insert_with_values(Some(&field), None, &[0, 1], &[&"name_index", &format!("{}", f.name_index)]);
         ans.insert_with_values(Some(&field), None, &[0, 1], &[&"descriptor_index", &format!("{}", f.descriptor_index)]);
@@ -62,7 +62,7 @@ pub fn class_to_tree(class: JavaClass) -> TreeView {
     }
     let methods = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"Methods", &""]);
     for m in class.methods {
-        let method = ans.insert_with_values(Some(&methods), None, &[0, 1], &[&"Method", &get_name(&class.constant_pool, m.name_index)]);
+        let method = ans.insert_with_values(Some(&methods), None, &[0, 1], &[&"Method", &format!("{}{}", get_name(&class.constant_pool, m.name_index), get_name(&class.constant_pool, m.descriptor_index))]);
         insert_access_method(&ans, &method, m.access_flags);
         ans.insert_with_values(Some(&method), None, &[0, 1], &[&"name_index", &format!("{}", m.name_index)]);
         ans.insert_with_values(Some(&method), None, &[0, 1], &[&"descriptor_index", &format!("{}", m.descriptor_index)]);
@@ -104,6 +104,9 @@ fn get_name(cp: &ConstantPool, index: u16) -> String {
                 format!("{}", mem::transmute::<u64, f64>(*bytes))
             }
         },
+        CPInfo::InvokeDynamic { name_and_type_index, .. } => {
+            get_name(cp, *name_and_type_index )
+        }
         _ => "Constant Pool index did not point to Utf8".to_owned()
     }
 }
@@ -179,6 +182,10 @@ fn insert_constant_pool(store: &TreeStore, iter: &TreeIter, constants: &Constant
                 store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"bootstrap_method_attr_index", &format!("{}", bootstrap_method_attr_index)]);
                 store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"name_and_type_index", &format!("{}", name_and_type_index)]);
             },
+            CPInfo::LongDoubleDummy => {
+                let iter_n = store.insert_with_values(Some(&cp), None, &[0, 1], &[&format!("{}. Long/Double Dummy Entry", i), &""]);
+                store.insert_with_values(Some(&iter_n), None, &[0, 1], &[&"Due to extremely poor choices by the original JVM architects, Longs and Doubles are 2 constant pool entries", &""]);
+            }
         }
     }
 }
@@ -366,7 +373,7 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
             LocalVariableTable { local_variable_table } => {
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"LocalVariableTable", &""]);
                 for lv in local_variable_table {
-                    let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"Entry", &""]);
+                    let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"Entry", &format!("{} {}", get_name(cp, lv.descriptor_index), get_name(cp, lv.name_index))]);
                     store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"start_pc", &format!("{}", lv.start_pc)]);
                     store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"length", &format!("{}", lv.length)]);
                     store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"name_index", &format!("{}", lv.name_index)]);

@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use icon::ICON;
 use inner::class_to_tree;
 use java_class::class::JavaClass;
@@ -74,14 +75,32 @@ pub fn make_gui() {
 
 fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
     let notebook = Rc::new(CNotebook::new());
+    let last_dir_base: Rc<Mutex<Option<String>>> = Rc::new(Mutex::new(None));
     let notebook_clone = Rc::clone(&notebook);
+    let last_dir = Rc::clone(&last_dir_base);
     open.connect_activate(move |_| {
         //let mut c = RefCell::new(&'static notebook);
         use gtk::FileChooserDialog;
         let fchoose = FileChooserDialog::new::<Window>(Some("Open"), None, FileChooserAction::Open);
+        let ldir2 = Rc::clone(&last_dir);
+        let guard = ldir2.lock().unwrap();
+        match *guard {
+            Some(ref s) => { fchoose.set_current_folder_uri(s); },
+            None => {}
+        };
+        drop(guard);
         let notebook = Rc::clone(&notebook_clone);
+        let last_dir = Rc::clone(&last_dir);
         fchoose.connect_file_activated(move |x| {
             let file = x.get_filename();
+            let folder = x.get_current_folder_uri();
+            match folder {
+                Some(folder) => {
+                    let mut p = last_dir.lock().unwrap();
+                    *p = Some(folder);
+                }
+                None => {}
+            }
             x.close();
             match file {
                 None => {},

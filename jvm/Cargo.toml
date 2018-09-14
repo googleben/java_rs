@@ -1,0 +1,7 @@
+[package]
+name = "jvm"
+version = "0.1.0"
+authors = ["Ben Wyatt <googleben@sbcglobal.net>"]
+
+[dependencies]
+java_class = { path = "../java_class" }

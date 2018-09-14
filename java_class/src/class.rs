@@ -58,7 +58,8 @@ impl JavaClass {
         let major_version = r.next16()?;
         let cp_count = r.next16()?;
         let mut cp_vec: Vec<CPInfo> = vec!();
-        for i in 0..cp_count-1 {
+        let mut iter = 0..cp_count-1;
+        while let Some(i) = iter.next() {
             let tag = r.next()?;
             if tag < 1 || tag > 18 || tag == 2 || tag == 13 || tag == 14 || tag == 17 { return malformed(); }
             let x: CPInfo = match tag {
@@ -81,12 +82,26 @@ impl JavaClass {
                     Utf8 { length, bytes }
                 }
                 15 => MethodHandle { reference_kind: r.next()?, reference_index: r.next16()? },
-                16 => MethodType {descriptor_index: r.next16()? },
+                16 => MethodType { descriptor_index: r.next16()? },
                 18 => InvokeDynamic { bootstrap_method_attr_index: r.next16()?, name_and_type_index: r.next16()? },
                 _ => panic!("Unreachable code, wildcard case reached in exhaustive match!") //unreachable
             };
-            cp_vec.insert(i as usize, x);
+            //deal with the awful fact that long and double constant pool entries are actually 2 entries
+            //seriously, what were they thinking
+            //can't we have changed that by now?? class files don't have to be backwards-compatible
+            //throwing a huge wrench in my machine here
+            match x {
+                Double {..} | Long {..} => {
+                    cp_vec.insert(i as usize, x);
+                    iter.next();
+                    cp_vec.insert((i+1) as usize, LongDoubleDummy);
+                }
+                _ => {
+                    cp_vec.insert(i as usize, x);
+                }
+            };
         };
+        println!("cp");
         let cp = match ConstantPool::new_with_info(cp_vec) {
             Ok(a) => a,
             Err(a) => return Err(io::Error::new(
@@ -152,6 +167,10 @@ impl JavaClass {
             methods,
             attributes
         })
+    }
+
+    pub fn is_interface(&self) -> bool {
+        self.access_flags & AccessFlags::Interface as u16 != 0
     }
 
     pub fn get_name(self) -> String {
