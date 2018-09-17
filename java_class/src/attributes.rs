@@ -2,7 +2,7 @@ use opcodes::Opcode;
 
 /// enum containing JVM Attributes
 /// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Attribute {
     ConstantValue { 
         constantvalue_index: u16
@@ -82,19 +82,19 @@ pub enum MethodParameterAccessFlags {
     Mandated  = 0x8000
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MethodParameterEntry {
     pub name_index: u16,
     pub access_flags: u16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BootstrapMethodsEntry {
     pub bootstrap_method_ref: u16,
     pub bootstrap_arguments: Vec<u16>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeAnnotation {
     pub target_info: TargetInfo,
     pub target_path: TypePath,
@@ -102,7 +102,7 @@ pub struct TypeAnnotation {
     pub element_value_pairs: Vec<ElementValuePair>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TargetInfo {
     TypeParameterTarget { type_parameter_index: u8 },
     SupertypeTarget { supertype_index: u16 },
@@ -116,37 +116,37 @@ pub enum TargetInfo {
     TypeArgumentTarget { offset: u16, type_argument_index: u8 },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypePath {
     pub path: Vec<TypePathEntry>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypePathEntry {
     pub type_path_kind: u8,
     pub type_argument_index: u8
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalVarTagetTableEntry {
     pub start_pc: u16,
     pub length: u16,
     pub index: u16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Annotation {
     pub type_index: u16,
     pub element_value_pairs: Vec<ElementValuePair>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ElementValuePair {
     pub element_name_index: u16,
     pub value: ElementValue
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ElementValue {
     ConstValueIndex(u16),
     EnumConstValue { type_name_index: u16, const_name_index: u16 },
@@ -155,7 +155,7 @@ pub enum ElementValue {
     ArrayValue(Vec<ElementValue>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalVariableTypeTableEntry {
     pub start_pc: u16,
     pub length: u16,
@@ -164,7 +164,7 @@ pub struct LocalVariableTypeTableEntry {
     pub index: u16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalVariableTableEntry {
     pub start_pc: u16,
     pub length: u16,
@@ -173,13 +173,13 @@ pub struct LocalVariableTableEntry {
     pub index: u16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LineNumberTableEntry {
     pub start_pc: u16,
     pub line_number: u16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InnerClassInfo {
     pub inner_class_info_index: u16,
     pub outer_class_info_index: u16,
@@ -187,7 +187,7 @@ pub struct InnerClassInfo {
     pub inner_class_access_flags: u16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VerificationTypeInfo {
     Top, //0
     Integer, //1
@@ -200,7 +200,7 @@ pub enum VerificationTypeInfo {
     Double //3
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StackMapFrame {
     SameFrame { offset_delta: u8 }, //0-63
     SameLocals1Item { offset_delta: u8, stack: VerificationTypeInfo }, // 64-127
@@ -211,7 +211,7 @@ pub enum StackMapFrame {
     FullFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo>, stack: Vec<VerificationTypeInfo> } //255
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExceptionTableEntry {
     pub start_pc: u16,
     pub end_pc: u16,

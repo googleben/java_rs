@@ -46,7 +46,7 @@ pub fn class_to_tree(class: JavaClass) -> TreeView {
     insert_constant_pool(&ans, &iter, constants);
     insert_access_class(&ans, &iter, class.access_flags);
     ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"this_class", &format!("{}", class.this_class)]);
-    ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"super_class", &(format!("{} ({})", class.super_class, get_name(constants, class.super_class)))]);
+    ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"super_class", &(format!("{} ({})", class.super_class, if class.super_class == 0 {"".to_owned()} else {get_name(constants, class.super_class)}))]);
     let interfaces = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"interfaces", &""]);
     for interface in class.interfaces {
         let name = get_name(&class.constant_pool, interface);
