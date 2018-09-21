@@ -21,9 +21,8 @@ impl ConstantPool {
     /// # Arguments
     /// 
     /// * `cpv` - holds the `CPInfo` to initialize the constant pool with
-    pub fn new_with_info(cpv: Vec<CPInfo>) -> Result<ConstantPool, Vec<string::String>> {
-        let cp = ConstantPool {cp: cpv};
-        Ok(cp)
+    pub fn new_with_info(cpv: Vec<CPInfo>) -> ConstantPool {
+        ConstantPool { cp: cpv }
     }
 
     /// Returns the 1-indexed length of the constant pool

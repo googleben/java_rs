@@ -28,44 +28,77 @@ pub struct Class {
 }
 
 impl Class {
-    pub fn new(class: JavaClass) -> Result<Class, ()> {
-        let minor_version = class.minor_version;
-        let major_version = class.major_version;
-        let constant_pool = SymbolicConstantPool::new(&class.constant_pool)?;
-        let access_flags = class.access_flags;
-        let name = jvm::get_name_cp(&class.constant_pool, class.this_class);
+    pub fn new() -> Class {
+        Class {
+            minor_version: 0, major_version: 0, constant_pool: SymbolicConstantPool::new_empty(),
+            access_flags: 0, name: "".to_string(), super_class: None, interfaces: vec!(), fields: HashMap::new(),
+            instance_fields: vec!(), methods: HashMap::new(), attributes: vec!()
+        }
+    }
+
+    pub fn initialize_start(&self, class: &JavaClass) -> Result<(), ()> {
+        for cp_info in class.constant_pool.items() {
+            match cp_info {
+                CPInfo::Class {name_index} => {
+                    let name = jvm::get_name_cp(&class.constant_pool, *name_index);
+                    jvm::get_or_load_defer(&name)?;
+                },
+                _ => {}
+            };
+        }
+        //super class must not be an interface
+        if class.super_class != 0 {
+            let super_class = jvm::get_or_load_defer(&jvm::get_name_cp(&class.constant_pool, class.super_class))?;
+        }
+        //interfaces must be interfaces
+        for interface_index in &class.interfaces {
+            //shouldn't need to guard against circular interfacing since that's done while loading the .class in ::jvm
+            let ans = jvm::get_or_load_defer(&jvm::get_name_cp(&class.constant_pool, *interface_index))?;
+        }
+        Ok(())
+    }
+
+    pub fn initialize(&mut self, class: &Box<JavaClass>) -> Result<(), ()> {
+        debug!("Initializing class");
+        self.minor_version = class.minor_version;
+        self.major_version = class.major_version;
+        self.constant_pool = SymbolicConstantPool::new(&class.constant_pool)?;
+        self.access_flags = class.access_flags;
+        self.name = jvm::get_name_cp(&class.constant_pool, class.this_class);
+        
         // if this is java/lang/Object it has no super class
-        let super_class = if name=="java/lang/Object" {
+        self.super_class = if self.name=="java/lang/Object" || class.super_class==0 {
             None
         } else {
             //shouldn't need to guard against circular superclassing since that's done while loading the .class in ::jvm
-            Some(jvm::get_or_load_class(&jvm::get_name_cp(&class.constant_pool, class.super_class))?)
+            let ans = jvm::get_or_load_class(&jvm::get_name_cp(&class.constant_pool, class.super_class))?;
+            Some(ans)
         };
-        let mut interfaces = Vec::with_capacity(class.interfaces.len());
+        self.interfaces = Vec::with_capacity(class.interfaces.len());
         for interface_index in &class.interfaces {
             //shouldn't need to guard against circular interfacing since that's done while loading the .class in ::jvm
-            interfaces.push(jvm::get_or_load_class(&jvm::get_name_cp(&class.constant_pool, class.super_class))?);
+            let ans = jvm::get_or_load_class(&jvm::get_name_cp(&class.constant_pool, *interface_index))?;
+            self.interfaces.push(ans);
         }
-        let mut fields = HashMap::new();
-        let mut instance_fields = vec!();
+        self.fields = HashMap::new();
+        self.instance_fields = vec!();
         for field in &class.fields {
             if field.access_flags & (::java_class::fields::AccessFlags::Static as u16) != 0 {
                 //static field
                 let field_n = Field::new(&class, &field);
-                fields.insert(field_n.name.to_owned(), Arc::new(RwLock::new(field_n)));
+                self.fields.insert(field_n.name.to_owned(), Arc::new(RwLock::new(field_n)));
             } else {
                 let field_n = InstanceFieldInfo::new(&class, &field);
-                instance_fields.push(Arc::new(field_n));
+                self.instance_fields.push(Arc::new(field_n));
             }
         }
-        let mut methods = HashMap::new();
+        self.methods = HashMap::new();
         for method in &class.methods {
-            let method_n = Method::new(&class, &method);
-            methods.insert(method_n.repr.to_owned(), Arc::new(RwLock::new(method_n)));
+            let method_n = Method::new(&class, &method)?;
+            self.methods.insert(method_n.repr.to_owned(), Arc::new(RwLock::new(method_n)));
         }
-        let attributes = class.attributes.clone();
-        Ok(Class { minor_version, major_version, constant_pool, access_flags, name,
-                   super_class, interfaces, fields, instance_fields, methods, attributes })
+        self.attributes = class.attributes.clone();
+        Ok(())
     }
 
     pub fn is_interface(&self) -> bool {
@@ -118,6 +151,7 @@ impl SymbolicConstantPool {
     pub fn new(cp: &::java_class::cp::ConstantPool) -> Result<SymbolicConstantPool, ()> {
         let mut ans = vec!();
         for cp_info in cp.items() {
+            //debug!("CP item {:?}", cp_info);
             let next = match cp_info {
                 CPInfo::Class {name_index} => {
                     let name = jvm::get_name_cp(cp, *name_index);
@@ -190,6 +224,7 @@ impl SymbolicConstantPool {
                 _ => ans.push(next)
             }
         }
+        debug!("CP Done");
         Ok(SymbolicConstantPool { constant_pool: ans })
     }
     pub fn new_empty() -> SymbolicConstantPool {
@@ -250,7 +285,7 @@ impl Field {
         }
     }
 
-    fn new(class: &JavaClass, field_info: &FieldInfo) -> Field {
+    pub fn new(class: &JavaClass, field_info: &FieldInfo) -> Field {
         let access_flags = field_info.access_flags;
         let name = jvm::get_name(class, &class.constant_pool[field_info.name_index]);
         let descriptor_raw = jvm::get_name(class, &class.constant_pool[field_info.descriptor_index]);
@@ -262,7 +297,7 @@ impl Field {
         Field { access_flags, name, descriptor_raw, descriptor, attributes, value }
     }
 
-    fn from_instance_field_info(info: Arc<RwLock<InstanceFieldInfo>>) -> Field {
+    pub fn from_instance_field_info(info: Arc<RwLock<InstanceFieldInfo>>) -> Field {
         let f = info.read().unwrap();
         let value = Arc::new(RwLock::new(Field::get_default_value(&f.descriptor_raw)));
         Field { access_flags: f.access_flags, name: f.name.to_owned(), descriptor_raw: f.descriptor_raw.to_owned(),
@@ -321,7 +356,7 @@ pub struct Method {
 }
 
 impl Method {
-    pub fn new(class: &JavaClass, method_info: &MethodInfo) -> Method {
+    pub fn new(class: &JavaClass, method_info: &MethodInfo) -> Result<Method, ()> {
         let (parameters, return_type) = 
             parse_parameters_return(&jvm::get_name(class, &class.constant_pool[method_info.descriptor_index]));
         let name = jvm::get_name(class, &class.constant_pool[method_info.name_index]);
@@ -330,18 +365,22 @@ impl Method {
         let access_flags = method_info.access_flags;
         let attributes = method_info.attributes.clone();
         //dirty use of a closure for early return, probably should be separate method
-        let code_attr_index = (|| {
-            for code_attr_index in 0..attributes.len() {
-                let code_attr = &attributes[code_attr_index];
-                match code_attr {
-                    Attribute::Code {..} => return code_attr_index,
-                    _ => {}
+        let code_attr_index = if method_info.is_abstract() || method_info.is_native() {
+            //abstract and native methods have no code attribute
+            Ok(0)
+        } else {
+            (|| {
+                for code_attr_index in 0..attributes.len() {
+                    let code_attr = &attributes[code_attr_index];
+                    match code_attr {
+                        Attribute::Code {..} => return Ok(code_attr_index),
+                        _ => {}
+                    }
                 }
-            }
-            //must be a native or abstract method
-            0
-        })();
-        Method { name, descriptor, repr, parameters, return_type, access_flags, attributes, code_attr_index }
+                Err(())
+            })()
+        }?;
+        Ok(Method { name, descriptor, repr, parameters, return_type, access_flags, attributes, code_attr_index })
         
     }
 }

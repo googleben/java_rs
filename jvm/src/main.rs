@@ -11,15 +11,26 @@
 
 
 extern crate java_class;
+#[macro_use] extern crate log;
+extern crate env_logger;
+extern crate zip;
 //will uncomment the following when it's time to work on the JNI
 //pub mod jni;
 //pub mod jni_impl;
 //TODO: add the jni extension "jvm.h"
 pub mod types;
 pub mod jvm;
+pub mod threads;
+
+use env_logger::{Builder, Env};
 
 fn main() {
+    env_logger::init();
     let cp = Box::new(["E:\\".to_owned()]);
     jvm::start(cp, &"Tester".to_owned());
-    println!("{:?}", jvm::load_class(&"Tester".to_owned()));
+    //println!("{:?}", jvm::load_class(&"Tester".to_owned()));
+    match jvm::load_class(&"Tester".to_owned()) {
+        Ok(_) => println!("ok"),
+        Err(a) => println!("{:?}", a)
+    }
 }

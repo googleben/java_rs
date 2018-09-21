@@ -10,6 +10,16 @@ pub struct MethodInfo {
     pub attributes: Vec<Attribute>
 }
 
+impl MethodInfo {
+    pub fn is_native(&self) -> bool {
+        self.access_flags & AccessFlags::Native as u16 != 0
+    }
+
+    pub fn is_abstract(&self) -> bool {
+        self.access_flags & AccessFlags::Abstract as u16 != 0
+    }
+}
+
 pub enum AccessFlags {
     Public       = 0x0001,
     Private      = 0x0002,

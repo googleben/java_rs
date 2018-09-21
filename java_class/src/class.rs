@@ -50,10 +50,32 @@ pub struct JavaClass {
 }
 
 impl JavaClass {
+
     pub fn new(file_name: &str) -> io::Result<JavaClass> {
-        let mut r = JavaClassReader::new(file_name)?;
+        JavaClass::build(JavaClassReader::new(file_name)?)
+    }
+
+    pub fn new_from_reader<T: Read>(reader: T) -> io::Result<JavaClass> {
+        JavaClass::build(JavaClassReader::new_from_reader(reader)?)
+    }
+
+    pub fn new_from_bytes(bytes: Vec<u8>) -> io::Result<JavaClass> {
+        JavaClass::build(JavaClassReader::new_from_bytes(bytes)?)
+    }
+
+    pub fn new_from_raw_bytes(bytes: *const u8, len: ::std::os::raw::c_long) -> io::Result<JavaClass> {
+        let mut buffer = Vec::with_capacity(len as usize);
+        unsafe {
+            for i in 0..(len as isize) {
+                buffer.push(*bytes.offset(i));
+            }
+        }
+        JavaClass::build(JavaClassReader::new_from_bytes(buffer)?)
+    }
+
+    fn build(mut r: JavaClassReader) -> io::Result<JavaClass> {
         let magic = r.next32()?;
-        if magic != 0xCAFEBABE { return malformed() }
+        if magic != 0xCAFEBABE { return malformed("Wrong magic nubmer") }
         let minor_version = r.next16()?;
         let major_version = r.next16()?;
         let cp_count = r.next16()?;
@@ -61,7 +83,9 @@ impl JavaClass {
         let mut iter = 0..cp_count-1;
         while let Some(i) = iter.next() {
             let tag = r.next()?;
-            if tag < 1 || tag > 18 || tag == 2 || tag == 13 || tag == 14 || tag == 17 { return malformed(); }
+            if tag < 1 || tag > 18 || tag == 2 || tag == 13 || tag == 14 || tag == 17 { 
+                return malformed("Invalid constant pool tag");
+            }
             let x: CPInfo = match tag {
                 7 => Class {name_index: r.next16()? },
                 9 => Fieldref { class_index: r.next16()?, name_and_type_index: r.next16()? },
@@ -84,7 +108,7 @@ impl JavaClass {
                 15 => MethodHandle { reference_kind: r.next()?, reference_index: r.next16()? },
                 16 => MethodType { descriptor_index: r.next16()? },
                 18 => InvokeDynamic { bootstrap_method_attr_index: r.next16()?, name_and_type_index: r.next16()? },
-                _ => panic!("Unreachable code, wildcard case reached in exhaustive match!") //unreachable
+                _ => panic!("Unreachable code, wildcard case reached in exhaustive match") //unreachable
             };
             //deal with the awful fact that long and double constant pool entries are actually 2 entries
             //seriously, what were they thinking
@@ -101,13 +125,7 @@ impl JavaClass {
                 }
             };
         };
-        println!("cp");
-        let cp = match ConstantPool::new_with_info(cp_vec) {
-            Ok(a) => a,
-            Err(a) => return Err(io::Error::new(
-                io::ErrorKind::InvalidData, 
-                a.into_iter().fold(String::from(""), |acc, x| acc + "\n" + &x)))
-        };
+        let cp = ConstantPool::new_with_info(cp_vec);
         let access_flags = r.next16()?;
         let this_class = r.next16()?;
         let super_class = r.next16()?;
@@ -188,39 +206,67 @@ impl JavaClass {
     }
 }
 
-fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Attribute>, &'static str> {
-    let num = r.next16().or(Err("read failure"))?;
+pub fn read_string(bytes: &Vec<u8>) -> String {
+    let mut chars = vec!();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let b = bytes[index];
+        if b == 0b11101101 {
+            //supplemental character, requires fixing for rust
+            index += 1;
+            let v = bytes[index];
+            index += 1;
+            let w = bytes[index];
+            index += 2;
+            let y = bytes[index];
+            index += 1;
+            let z = bytes[index];
+            let code_point = ((v as u32 & 0x0f) << 16) + ((w as u32 & 0x3f) << 10) + ((y as u32 & 0x0f) << 6) + (z & 0x3f) as u32;
+            chars.push((0b11110000 + ((code_point >> 15) as u8 & 0b00000111)) as char);
+            chars.push((0b10000000 + ((code_point >> 12) as u8 & 0b00111111)) as char);
+            chars.push((0b10000000 + ((code_point >> 6) as u8 & 0b00111111)) as char);
+            chars.push((0b10000000 + (code_point as u8 & 0b00111111)) as char);
+        } else {
+            chars.push(b as char);
+        }
+        index += 1;
+    }
+    chars.into_iter().collect()
+}
+
+fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec<Attribute>> {
+    let num = r.next16()?;
     let mut ans = Vec::with_capacity(num as usize);
     for _i in 0..num {
-        let name_index = r.next16().or(Err("read failure"))?;
-        let attribute_length = r.next32().or(Err("read failure"))?;
+        let name_index = r.next16()?;
+        let attribute_length = r.next32()?;
         let name = match &cp[name_index] {
-            Utf8 { length: _, bytes } => str::from_utf8(bytes).or(Err("bad utf8"))?,
-            _ => return Err("incorrect cp type")
+            Utf8 { length: _, bytes } => read_string(bytes),
+            _ => return malformed("Attribute tag was not Utf8")
         };
-        ans.push(match name {
-            "ConstantValue" => ConstantValue { constantvalue_index: r.next16().or(Err("read failure"))? },
+        ans.push(match name.as_str() {
+            "ConstantValue" => ConstantValue { constantvalue_index: r.next16()? },
             "Code" => Code {
-                max_stack: r.next16().or(Err("read failure"))?,
-                max_locals: r.next16().or(Err("read failure"))?,
+                max_stack: r.next16()?,
+                max_locals: r.next16()?,
                 code: {
-                    let code_len = r.next32().or(Err("read failure"))?;
+                    let code_len = r.next32()?;
                     let mut ans = Vec::with_capacity(code_len as usize);
                     let start = r.dist();
                     while r.dist()-start<code_len {
-                        ans.push(to_opcode(r).or(Err("bad bytecode read"))?)
+                        ans.push(to_opcode(r, start).or(malformed("Invalid bytecode"))?);
                     }
                     ans
                 },
                 exception_table: {
-                    let len = r.next16().or(Err("read failure"))?;
+                    let len = r.next16()?;
                     let mut ans = Vec::with_capacity(len as usize);
                     for _i in 0..len {
                         ans.push(ExceptionTableEntry {
-                            start_pc: r.next16().or(Err("read failure"))?,
-                            end_pc: r.next16().or(Err("read failure"))?,
-                            handler_pc: r.next16().or(Err("read failure"))?,
-                            catch_type: r.next16().or(Err("read failure"))?
+                            start_pc: r.next16()?,
+                            end_pc: r.next16()?,
+                            handler_pc: r.next16()?,
+                            catch_type: r.next16()?
                         });
                     }
                     ans
@@ -231,10 +277,10 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "StackMapTable" => StackMapTable {
                 entries: {
-                    let num = r.next16().or(Err("read failure"))?;
+                    let num = r.next16()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
-                        let tag = r.next().or(Err("read failure"))?;
+                        let tag = r.next()?;
                         ans.push(match tag {
                             0...63 => StackMapFrame::SameFrame { offset_delta: tag },
                             64...127 => StackMapFrame::SameLocals1Item {
@@ -242,18 +288,18 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
                                 stack: read_verification_type_info(r)?
                             },
                             247 => StackMapFrame::SameLocals1ItemExtended {
-                                offset_delta: r.next16().or(Err("read failure"))?,
+                                offset_delta: r.next16()?,
                                 stack: read_verification_type_info(r)?
                             },
                             248...250 => StackMapFrame::ChopFrame {
                                 absent_locals: 251 - tag,
-                                offset_delta: r.next16().or(Err("read failure"))?
+                                offset_delta: r.next16()?
                             },
                             251 => StackMapFrame::SameFrameExtended {
-                                offset_delta: r.next16().or(Err("read failure"))?
+                                offset_delta: r.next16()?
                             },
                             252...254 => StackMapFrame::AppendFrame {
-                                offset_delta: r.next16().or(Err("read failure"))?,
+                                offset_delta: r.next16()?,
                                 locals: {
                                     let mut ans = vec!();
                                     for _i in 0..(tag-251) {
@@ -263,23 +309,23 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
                                 }
                             },
                             255 => StackMapFrame::FullFrame {
-                                offset_delta: r.next16().or(Err("read failure"))?,
+                                offset_delta: r.next16()?,
                                 locals: {
                                     let mut ans = vec!();
-                                    for _i in 0..r.next16().or(Err("read failure"))? {
+                                    for _i in 0..r.next16()? {
                                         ans.push(read_verification_type_info(r)?);
                                     }
                                     ans
                                 },
                                 stack: {
                                     let mut ans = vec!();
-                                    for _i in 0..r.next16().or(Err("read failure"))? {
+                                    for _i in 0..r.next16()? {
                                         ans.push(read_verification_type_info(r)?);
                                     }
                                     ans
                                 }
                             },
-                            _ => return Err("invalid stackmapframe tag")
+                            _ => return malformed("Invalid stackmapframe tag")
                         });
                     }
                     ans
@@ -287,57 +333,57 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "Exceptions" => Exceptions {
                 exception_index_table: {
-                    let num = r.next16().or(Err("read failure"))?;
+                    let num = r.next16()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
-                        ans.push(r.next16().or(Err("read failure"))?);
+                        ans.push(r.next16()?);
                     }
                     ans
                 }
             },
             "InnerClasses" => InnerClasses {
                 classes: {
-                    let num = r.next16().or(Err("read failure"))?;
+                    let num = r.next16()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(InnerClassInfo {
-                            inner_class_info_index: r.next16().or(Err("read failure"))?,
-                            outer_class_info_index: r.next16().or(Err("read failure"))?,
-                            inner_name_index: r.next16().or(Err("read failure"))?,
-                            inner_class_access_flags: r.next16().or(Err("read failure"))?
+                            inner_class_info_index: r.next16()?,
+                            outer_class_info_index: r.next16()?,
+                            inner_name_index: r.next16()?,
+                            inner_class_access_flags: r.next16()?
                         })
                     }
                     ans
                 }
             },
             "EnclosingMethod" => EnclosingMethod {
-                class_index: r.next16().or(Err("read failure"))?,
-                method_index: r.next16().or(Err("read failure"))?
+                class_index: r.next16()?,
+                method_index: r.next16()?
             },
             "Synthetic" => Synthetic,
             "Signature" => Signature {
-                signature_index: r.next16().or(Err("read failure"))?
+                signature_index: r.next16()?
             },
             "SourceFile" => SourceFile {
-                sourcefile_index: r.next16().or(Err("read failure"))?
+                sourcefile_index: r.next16()?
             },
             "SourceDebugExtension" => SourceDebugExtenson {
                 debug_extension: {
-                    let mut ans = Vec::with_capacity(r.next16().or(Err("read failure"))? as usize);
+                    let mut ans = Vec::with_capacity(r.next16()? as usize);
                     for _i in 0..attribute_length {
-                        ans.push(r.next().or(Err("read failure"))?)
+                        ans.push(r.next()?)
                     }
                     ans
                 }
             },
             "LineNumberTable" => LineNumberTable {
                 line_number_table: {
-                    let len = r.next16().or(Err("read failure"))?;
+                    let len = r.next16()?;
                     let mut ans = Vec::with_capacity(len as usize);
                     for _i in 0..len {
                         ans.push(LineNumberTableEntry {
-                            start_pc: r.next16().or(Err("read failure"))?,
-                            line_number: r.next16().or(Err("read failure"))?
+                            start_pc: r.next16()?,
+                            line_number: r.next16()?
                         })
                     }
                     ans
@@ -345,15 +391,15 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "LocalVariableTable" => LocalVariableTable {
                 local_variable_table: {
-                    let len = r.next16().or(Err("read failure"))?;
+                    let len = r.next16()?;
                     let mut ans = Vec::with_capacity(len as usize);
                     for _i in 0..len {
                         ans.push(LocalVariableTableEntry {
-                            start_pc: r.next16().or(Err("read failure"))?,
-                            length: r.next16().or(Err("read failure"))?,
-                            name_index: r.next16().or(Err("read failure"))?,
-                            descriptor_index: r.next16().or(Err("read failure"))?,
-                            index: r.next16().or(Err("read failure"))?
+                            start_pc: r.next16()?,
+                            length: r.next16()?,
+                            name_index: r.next16()?,
+                            descriptor_index: r.next16()?,
+                            index: r.next16()?
                         })
                     }
                     ans
@@ -361,15 +407,15 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "LocalVariableTypeTable" => LocalVariableTypeTable {
                 local_variable_type_table: {
-                    let len = r.next16().or(Err("read failure"))?;
+                    let len = r.next16()?;
                     let mut ans = Vec::with_capacity(len as usize);
                     for _i in 0..len {
                         ans.push(LocalVariableTypeTableEntry {
-                            start_pc: r.next16().or(Err("read failure"))?,
-                            length: r.next16().or(Err("read failure"))?,
-                            name_index: r.next16().or(Err("read failure"))?,
-                            signature_index: r.next16().or(Err("read failure"))?,
-                            index: r.next16().or(Err("read failure"))?
+                            start_pc: r.next16()?,
+                            length: r.next16()?,
+                            name_index: r.next16()?,
+                            signature_index: r.next16()?,
+                            index: r.next16()?
                         })
                     }
                     ans
@@ -384,7 +430,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "RuntimeVisibleParameterAnnotations" => RuntimeVisibleParameterAnnotations {
                 parameter_annotations: {
-                    let num = r.next().or(Err("read failure"))?;
+                    let num = r.next()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(read_annotations(r)?);
@@ -394,7 +440,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "RuntimeInvisibleParameterAnnotations" => RuntimeInvisibleParameterAnnotations {
                 parameter_annotations: {
-                    let num = r.next().or(Err("read failure"))?;
+                    let num = r.next()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(read_annotations(r)?);
@@ -413,16 +459,16 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "BootstrapMethods" => BootstrapMethods {
                 bootstrap_methods: {
-                    let num = r.next16().or(Err("read failure"))?;
+                    let num = r.next16()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(BootstrapMethodsEntry {
-                            bootstrap_method_ref: r.next16().or(Err("read failure"))?,
+                            bootstrap_method_ref: r.next16()?,
                             bootstrap_arguments: {
-                                let numb = r.next16().or(Err("read failure"))?;
+                                let numb = r.next16()?;
                                 let mut bas = Vec::with_capacity(numb as usize);
                                 for _j in 0..numb {
-                                    bas.push(r.next16().or(Err("read failure"))?);
+                                    bas.push(r.next16()?);
                                 }
                                 bas
                             }
@@ -433,25 +479,25 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> Result<Vec<Att
             },
             "MethodParameters" => MethodParameters {
                 parameters: {
-                    let num = r.next16().or(Err("read failure"))?;
+                    let num = r.next16()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(MethodParameterEntry {
-                            name_index: r.next16().or(Err("read failure"))?,
-                            access_flags: r.next16().or(Err("read failure"))?
+                            name_index: r.next16()?,
+                            access_flags: r.next16()?
                         });
                     }
                     ans
                 }
             },
-            _ => return Err("invalid attribute name")
+            _ => return malformed("invalid attribute name")
         });
     }
     Ok(ans)
 }
 
-fn read_type_annotations(r: &mut JavaClassReader) -> Result<Vec<TypeAnnotation>, &'static str> {
-    let len = r.next16().or(Err("read failure"))?;
+fn read_type_annotations(r: &mut JavaClassReader) -> io::Result<Vec<TypeAnnotation>> {
+    let len = r.next16()?;
     let mut ans = Vec::with_capacity(len as usize);
     for _i in 0..len {
         ans.push(read_type_annotation(r)?);
@@ -459,53 +505,53 @@ fn read_type_annotations(r: &mut JavaClassReader) -> Result<Vec<TypeAnnotation>,
     Ok(ans)
 }
 
-fn read_type_annotation(r: &mut JavaClassReader) -> Result<TypeAnnotation, &'static str> {
-    let target_type = r.next().or(Err("read failure"))?;
+fn read_type_annotation(r: &mut JavaClassReader) -> io::Result<TypeAnnotation> {
+    let target_type = r.next()?;
     let target_info = match target_type {
-        0x00 | 0x01 => TargetInfo::TypeParameterTarget { type_parameter_index: r.next().or(Err("read failure"))? },
-        0x10 => TargetInfo::SupertypeTarget { supertype_index: r.next16().or(Err("read failure"))? },
-        0x11 | 0x12 => TargetInfo::TypeParameterBoundTarget { type_parameter_index: r.next().or(Err("read failure"))?, bound_index: r.next().or(Err("read failure"))? },
+        0x00 | 0x01 => TargetInfo::TypeParameterTarget { type_parameter_index: r.next()? },
+        0x10 => TargetInfo::SupertypeTarget { supertype_index: r.next16()? },
+        0x11 | 0x12 => TargetInfo::TypeParameterBoundTarget { type_parameter_index: r.next()?, bound_index: r.next()? },
         0x13 | 0x14 | 0x15 => TargetInfo::EmptyTarget,
-        0x16 => TargetInfo::FormalParameterTarget { formal_parameter_index: r.next().or(Err("read failure"))? },
-        0x17 => TargetInfo::ThrowsTarget { throws_type_index: r.next16().or(Err("read failure"))? },
+        0x16 => TargetInfo::FormalParameterTarget { formal_parameter_index: r.next()? },
+        0x17 => TargetInfo::ThrowsTarget { throws_type_index: r.next16()? },
         0x40 | 0x41 => TargetInfo::LocalVarTarget {
             table: {
-                let len = r.next16().or(Err("read failure"))?;
-                let mut ans = Vec::with_capacity(r.next16().or(Err("read failure"))? as usize);
+                let len = r.next16()?;
+                let mut ans = Vec::with_capacity(r.next16()? as usize);
                 for _i in 0..len {
                     ans.push(LocalVarTagetTableEntry {
-                        start_pc: r.next16().or(Err("read failure"))?,
-                        length: r.next16().or(Err("read failure"))?,
-                        index: r.next16().or(Err("read failure"))?
+                        start_pc: r.next16()?,
+                        length: r.next16()?,
+                        index: r.next16()?
                     });
                 }
                 ans
             }
         },
-        0x42 => TargetInfo::CatchTarget { exception_table_index: r.next16().or(Err("read failure"))? },
-        0x43 | 0x44 | 0x45 | 0x46 => TargetInfo::OffsetTarget { offset: r.next16().or(Err("read failure"))? },
-        0x47 | 0x48 | 0x49 | 0x4A | 0x4B => TargetInfo::TypeArgumentTarget { offset: r.next16().or(Err("read failure"))?, type_argument_index: r.next().or(Err("read failure"))? },
-        _ => return Err("Bad target info tag")
+        0x42 => TargetInfo::CatchTarget { exception_table_index: r.next16()? },
+        0x43 | 0x44 | 0x45 | 0x46 => TargetInfo::OffsetTarget { offset: r.next16()? },
+        0x47 | 0x48 | 0x49 | 0x4A | 0x4B => TargetInfo::TypeArgumentTarget { offset: r.next16()?, type_argument_index: r.next()? },
+        _ => return malformed("Bad target info tag")
     };
     let type_path = TypePath {
         path: {
-            let num = r.next().or(Err("read failure"))?;
+            let num = r.next()?;
             let mut ans = Vec::with_capacity(num as usize);
             for _i in 0..num {
                 ans.push(TypePathEntry {
-                    type_path_kind: r.next().or(Err("read failure"))?,
-                    type_argument_index: r.next().or(Err("read failure"))?
+                    type_path_kind: r.next()?,
+                    type_argument_index: r.next()?
                 })
             }
             ans
         }
     };
-    let type_index = r.next16().or(Err("read failure"))?;
-    let num_ev = r.next16().or(Err("read failure"))?;
+    let type_index = r.next16()?;
+    let num_ev = r.next16()?;
     let mut element_value_pairs = Vec::with_capacity(num_ev as usize);
     for _i in 0..num_ev {
         element_value_pairs.push(ElementValuePair {
-            element_name_index: r.next16().or(Err("read failure"))?,
+            element_name_index: r.next16()?,
             value: read_element_value(r)?
         });
     }
@@ -517,8 +563,8 @@ fn read_type_annotation(r: &mut JavaClassReader) -> Result<TypeAnnotation, &'sta
     })
 }
 
-fn read_annotations(r: &mut JavaClassReader) -> Result<Vec<Annotation>, &'static str> {
-    let len = r.next16().or(Err("read failure"))?;
+fn read_annotations(r: &mut JavaClassReader) -> io::Result<Vec<Annotation>> {
+    let len = r.next16()?;
     let mut ans = Vec::with_capacity(len as usize);
     for _i in 0..len {
         ans.push(read_annotation(r)?);
@@ -526,13 +572,13 @@ fn read_annotations(r: &mut JavaClassReader) -> Result<Vec<Annotation>, &'static
     Ok(ans)
 }
 
-fn read_annotation(r: &mut JavaClassReader) -> Result<Annotation, &'static str> {
-    let type_index = r.next16().or(Err("read failure"))?;
-    let len = r.next16().or(Err("read failure"))?;
+fn read_annotation(r: &mut JavaClassReader) -> io::Result<Annotation> {
+    let type_index = r.next16()?;
+    let len = r.next16()?;
     let mut ans = Vec::with_capacity(len as usize);
     for _i in 0..len {
         ans.push(ElementValuePair {
-            element_name_index: r.next16().or(Err("read failure"))?,
+            element_name_index: r.next16()?,
             value: read_element_value(r)?
         })
     }
@@ -542,62 +588,75 @@ fn read_annotation(r: &mut JavaClassReader) -> Result<Annotation, &'static str> 
     })
 }
 
-fn read_element_value(r: &mut JavaClassReader) -> Result<ElementValue, &'static str> {
-    let tag = r.next().or(Err("read failure"))?;
+fn read_element_value(r: &mut JavaClassReader) -> io::Result<ElementValue> {
+    let tag = r.next()?;
     Ok(match tag as char {
-        'B' | 'C' | 'D' | 'F' | 'I' | 'J' | 'S' | 'Z' | 's' => ElementValue::ConstValueIndex(r.next16().or(Err("read failure"))?),
+        'B' | 'C' | 'D' | 'F' | 'I' | 'J' | 'S' | 'Z' | 's' => ElementValue::ConstValueIndex(r.next16()?),
         'e' => ElementValue::EnumConstValue {
-            type_name_index: r.next16().or(Err("read failure"))?,
-            const_name_index: r.next16().or(Err("read failure"))?
+            type_name_index: r.next16()?,
+            const_name_index: r.next16()?
         },
-        'c' => ElementValue::ClassInfoIndex(r.next16().or(Err("read failure"))?),
+        'c' => ElementValue::ClassInfoIndex(r.next16()?),
         '@' => ElementValue::AnnotationValue(read_annotation(r)?),
         '[' => ElementValue::ArrayValue({
-            let num = r.next16().or(Err("read failure"))?;
+            let num = r.next16()?;
             let mut ans = Vec::with_capacity(num as usize);
             for _i in 0..num {
                 ans.push(read_element_value(r)?);
             }
             ans
         }),
-        _ => return Err("invalid elementvalue tag")
+        _ => return malformed("invalid elementvalue tag")
     })
 }
 
-fn read_verification_type_info(r: &mut JavaClassReader) -> Result<VerificationTypeInfo, &'static str> {
-    let tag = r.next().or(Err("read failure"))?;
+fn read_verification_type_info(r: &mut JavaClassReader) -> io::Result<VerificationTypeInfo> {
+    let tag = r.next()?;
     Ok(match tag {
         0 => VerificationTypeInfo::Top,
         1 => VerificationTypeInfo::Integer,
         2 => VerificationTypeInfo::Float,
         5 => VerificationTypeInfo::Null,
         6 => VerificationTypeInfo::UninitializedThis,
-        7 => VerificationTypeInfo::Object { cpool_index: r.next16().or(Err("read failure"))? },
-        8 => VerificationTypeInfo::UninitializedVariable { offset: r.next16().or(Err("read failure"))? },
+        7 => VerificationTypeInfo::Object { cpool_index: r.next16()? },
+        8 => VerificationTypeInfo::UninitializedVariable { offset: r.next16()? },
         4 => VerificationTypeInfo::Long,
         3 => VerificationTypeInfo::Double,
-        _ => return Err("bad verification type info number")
+        _ => return malformed("Bad verification type info number")
     })
 }
 
-fn malformed() -> io::Result<JavaClass> {
-    Err(io::Error::new(io::ErrorKind::InvalidData, "Malformed class file"))
+fn malformed<T>(err: &str) -> io::Result<T> {
+    Err(io::Error::new(io::ErrorKind::InvalidData, format!("Malformed class file: {}", err)))
 }
 
+/// an abstraction for reading bytes of a .class
 pub struct JavaClassReader {
-    file: File,
-    buffer: [u8; 1],
+    buffer: Vec<u8>,
     dist: u32
 }
 
 impl JavaClassReader {
     fn new(file_name: &str) -> io::Result<JavaClassReader> {
-        Ok(JavaClassReader {file: File::open(file_name)?, buffer: [0; 1], dist: 0})
+        let mut buffer = Vec::with_capacity(::std::fs::metadata(file_name)?.len() as usize);
+        File::open(file_name)?.read_to_end(&mut buffer)?;
+        Ok(JavaClassReader { buffer, dist: 0 })
+    }
+    fn new_from_reader<T: Read>(mut reader: T) -> io::Result<JavaClassReader> {
+        let mut buffer = vec!();
+        reader.read_to_end(&mut buffer)?;
+        Ok(JavaClassReader { buffer, dist: 0 })
+    }
+    fn new_from_bytes(bytes: Vec<u8>) -> io::Result<JavaClassReader> {
+        Ok(JavaClassReader { buffer: bytes, dist: 0 })
     }
     pub fn next(&mut self) -> io::Result<u8> {
-        self.file.read(&mut self.buffer)?;
-        self.dist+=1;
-        Ok(self.buffer[0])
+        if self.dist as usize >= self.buffer.len() {
+            return malformed("Reached eof early");
+        }
+        let ans = self.buffer[self.dist as usize];
+        self.dist += 1;
+        Ok(ans)
     }
     pub fn next16(&mut self) -> io::Result<u16> {
         Ok(build_u16!(self.next()?, self.next()?))

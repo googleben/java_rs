@@ -1476,7 +1476,7 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &Const
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"high", &format!("{}", high)]);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"match_offset_pairs", &""]);
                 for offset in &jump_offsets {
-                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("{} ({})", offset, *offset+*pos), &""]);
+                    store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("{} ({})", offset, *offset+*pos as i32), &""]);
                 }
                 *pos+=13 + (jump_offsets.len()*8) as u32;
             },

@@ -4,7 +4,7 @@ use opcodes::Opcode::*;
 
 /// Reads in a single opcode from a `JavaClassReader` and returns the read-in Opcode.
 /// Should never fail with a well-formed Java 8 class file.
-pub fn to_opcode(r: &mut JavaClassReader) -> Result<Opcode, ()> {
+pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, ()> {
     let bytecode = r.next().or(Err(()))?;
     let ans = match bytecode {
         0x00 => nop,
@@ -178,21 +178,21 @@ pub fn to_opcode(r: &mut JavaClassReader) -> Result<Opcode, ()> {
         0xa8 => jsr { branch: r.next16().or(Err(()))? },
         0xa9 => ret { index: r.next().or(Err(()))? },
         0xaa => {
-            while r.dist()%4!=0 { r.next().or(Err(()))?; }
-            let default = r.next32().or(Err(()))?;
-            let low = r.next32().or(Err(()))?;
-            let high = r.next32().or(Err(()))?;
+            while (r.dist()-method_start)%4!=0 { r.next().or(Err(()))?; }
+            let default = r.next32().or(Err(()))? as i32;
+            let low = r.next32().or(Err(()))? as i32;
+            let high = r.next32().or(Err(()))? as i32;
             let npairs = high - low + 1;
             let mut jump_offsets = Vec::new();
             for _ in 0..npairs {
-                jump_offsets.push(r.next32().or(Err(()))?);
+                jump_offsets.push(r.next32().or(Err(()))? as i32);
             }
             tableswitch { default, low, high, jump_offsets }
         },
         0xab => {
-            while r.dist()%4!=0 { r.next().or(Err(()))?; }
+            while (r.dist()-method_start)%4!=0 { r.next().or(Err(()))?; }
             let default = r.next32().or(Err(()))?;
-            let npairs = r.next32().or(Err(()))?;
+            let npairs = r.next32().or(Err(()))? as i32;
             let mut offsets = Vec::new();
             for _ in 0..npairs {
                 offsets.push(
