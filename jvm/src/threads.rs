@@ -1,11 +1,11 @@
-use std::sync::RwLock;
 use std::sync::Arc;
-use types::Method;
+use std::sync::RwLock;
 use types::JavaType;
+use types::Method;
 
 pub struct JvmThread {
     pub pending_exception: Option<Arc<RwLock<JavaType>>>,
-    pub stack: Vec<StackFrame>
+    pub stack: Vec<StackFrame>,
 }
 
 pub struct StackFrame {
@@ -24,9 +24,9 @@ impl StackFrame {
         let m = m.read().unwrap();
         let stack = Vec::with_capacity(match
             m.attributes.get(m.code_attr_index).unwrap() {
-                ::java_class::attributes::Attribute::Code {max_stack, ..} => *max_stack as usize,
-                _ => panic!("Incorrect code attribute")
-            });
+            ::java_class::attributes::Attribute::Code { max_stack, .. } => *max_stack as usize,
+            _ => panic!("Incorrect code attribute")
+        });
         StackFrame { current_method, this, pc: 0, stack, locals: arguments, thread }
     }
 }

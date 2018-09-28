@@ -1,14 +1,14 @@
-use std::sync::Mutex;
+use gdk_pixbuf::{Colorspace, Pixbuf};
+use gtk::*;
+use gtk;
+use gtk::prelude::*;
 use icon::ICON;
 use inner::class_to_tree;
 use java_class::class::JavaClass;
-use gtk::prelude::*;
-use gtk::*;
-use gtk;
-use gdk_pixbuf::{Pixbuf, Colorspace};
-use std::rc::Rc;
 use java_class::cp_info::CPInfo;
+use std::rc::Rc;
 use std::str;
+use std::sync::Mutex;
 
 pub fn make_gui() {
     if gtk::init().is_err() {
@@ -19,21 +19,15 @@ pub fn make_gui() {
     let window = Window::new(WindowType::Toplevel);
     window.set_title("Class Browser");
     window.set_default_size(500, 700);
-    
+
 
     let filem = MenuItem::new_with_label("File");
-    //menu.append(&filem);
     let v_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    //v_box.pack_start(&menu, false, false, 0);
     window.add(&v_box);
 
     let menu = Menu::new();
     let open = MenuItem::new_with_label("Open");
 
-    //let mut notebook = CNotebook::new();
-    //let mut c = RefCell::new(notebook);
-
-    
     menu.append(&open);
     filem.set_submenu(&menu);
 
@@ -51,7 +45,7 @@ pub fn make_gui() {
         v.push(*i);
     }
 
-    let icon_buf = Pixbuf::new_from_vec(v, Colorspace::Rgb, true, 8, 64, 64, 64*4);
+    let icon_buf = Pixbuf::new_from_vec(v, Colorspace::Rgb, true, 8, 64, 64, 64 * 4);
 
     window.set_icon(&icon_buf);
 
@@ -65,27 +59,18 @@ pub fn make_gui() {
     gtk::main();
 }
 
-/*fn closure<F: Fn(&MenuItem) + 'static>(notebook: CNotebook) -> F {
-    |&x| {}
-}*/
-
-/*fn getN<'a>() -> &'static CNotebook {
-    &notebook.unwrap()
-}*/
-
 fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
     let notebook = Rc::new(CNotebook::new());
     let last_dir_base: Rc<Mutex<Option<String>>> = Rc::new(Mutex::new(None));
     let notebook_clone = Rc::clone(&notebook);
     let last_dir = Rc::clone(&last_dir_base);
     open.connect_activate(move |_| {
-        //let mut c = RefCell::new(&'static notebook);
         use gtk::FileChooserDialog;
         let fchoose = FileChooserDialog::new::<Window>(Some("Open"), None, FileChooserAction::Open);
         let ldir2 = Rc::clone(&last_dir);
         let guard = ldir2.lock().unwrap();
         match *guard {
-            Some(ref s) => { fchoose.set_current_folder_uri(s); },
+            Some(ref s) => { fchoose.set_current_folder_uri(s); }
             None => {}
         };
         drop(guard);
@@ -103,7 +88,7 @@ fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
             }
             x.close();
             match file {
-                None => {},
+                None => {}
                 Some(f) => {
                     let p = f.as_path();
                     let scrollw = ScrolledWindow::new(None, None);
@@ -115,14 +100,14 @@ fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
                         }
                     };
                     let name = match class.constant_pool[class.this_class] {
-                        CPInfo::Class {name_index} => {
+                        CPInfo::Class { name_index } => {
                             match &class.constant_pool[name_index] {
-                                CPInfo::Utf8 { bytes, ..} => {
+                                CPInfo::Utf8 { bytes, .. } => {
                                     str::from_utf8(&bytes).unwrap().to_owned()
-                                },
+                                }
                                 _ => "Class Pool index did not point to Utf8".to_owned()
                             }
-                        },
+                        }
                         _ => "Class Pool index did not point to Utf8".to_owned()
                     };
                     scrollw.add(&class_to_tree(class));
@@ -167,7 +152,7 @@ impl CNotebook {
         let notebook_clone = self.notebook.clone();
         button.connect_clicked(move |_| {
             let index = notebook_clone.page_num(&widget)
-                                      .expect("Couldn't get page_num from notebook_clone");
+                .expect("Couldn't get page_num from notebook_clone");
             notebook_clone.remove_page(Some(index));
         });
 

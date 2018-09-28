@@ -178,7 +178,7 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0xa8 => jsr { branch: r.next16().or(Err(()))? as i16 },
         0xa9 => ret { index: r.next().or(Err(()))? },
         0xaa => {
-            while (r.dist()-method_start)%4!=0 { r.next().or(Err(()))?; }
+            while (r.dist() - method_start) % 4 != 0 { r.next().or(Err(()))?; }
             let default = r.next32().or(Err(()))? as i32;
             let low = r.next32().or(Err(()))? as i32;
             let high = r.next32().or(Err(()))? as i32;
@@ -188,19 +188,19 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
                 jump_offsets.push(r.next32().or(Err(()))? as i32);
             }
             tableswitch { default, low, high, jump_offsets }
-        },
+        }
         0xab => {
-            while (r.dist()-method_start)%4!=0 { r.next().or(Err(()))?; }
+            while (r.dist() - method_start) % 4 != 0 { r.next().or(Err(()))?; }
             let default = r.next32().or(Err(()))? as i32;
             let npairs = r.next32().or(Err(()))? as i32;
             let mut offsets = Vec::new();
             for _ in 0..npairs {
                 offsets.push(
-                    (r.next32().or(Err(()))? as i32, 
-                    r.next32().or(Err(()))? as i32));
+                    (r.next32().or(Err(()))? as i32,
+                     r.next32().or(Err(()))? as i32));
             }
             lookupswitch { default, match_offset_pairs: offsets }
-        },
+        }
         0xac => ireturn,
         0xad => lreturn,
         0xae => freturn,
@@ -214,8 +214,17 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0xb6 => invokevirtual { index: r.next16().or(Err(()))? },
         0xb7 => invokespecial { index: r.next16().or(Err(()))? },
         0xb8 => invokestatic { index: r.next16().or(Err(()))? },
-        0xb9 => { let ans = invokeinterface { index: r.next16().or(Err(()))?, count: r.next().or(Err(()))? }; r.next().or(Err(()))?; ans }
-        0xba => { let ans = invokedynamic { index: r.next16().or(Err(()))? }; r.next().or(Err(()))?; r.next().or(Err(()))?; ans }
+        0xb9 => {
+            let ans = invokeinterface { index: r.next16().or(Err(()))?, count: r.next().or(Err(()))? };
+            r.next().or(Err(()))?;
+            ans
+        }
+        0xba => {
+            let ans = invokedynamic { index: r.next16().or(Err(()))? };
+            r.next().or(Err(()))?;
+            r.next().or(Err(()))?;
+            ans
+        }
         0xbb => new { index: r.next16().or(Err(()))? },
         0xbc => newarray { atype: r.next().or(Err(()))? },
         0xbd => anewarray { index: r.next16().or(Err(()))? },
@@ -233,9 +242,9 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
                     const_: r.next16().or(Err(()))? as i16,
                 }
             } else {
-                wide { 
+                wide {
                     opcode,
-                    index: r.next16().or(Err(()))?
+                    index: r.next16().or(Err(()))?,
                 }
             }
         }
@@ -273,16 +282,49 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         fconst_2 => 0x0d,
         dconst_0 => 0x0e,
         dconst_1 => 0x0f,
-        bipush { val } => { args.push(val); 0x10 },
-        sipush { val } => { args.push((val >> 8) as u8); args.push(val as u8); 0x11 }
-        ldc { index } => { args.push(index); 0x12 },
-        ldc_w { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0x13 },
-        ldc2_w { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0x14 },
-        iload { index } => { args.push(index); 0x15 },
-        lload { index } => { args.push(index); 0x16 },
-        fload { index } => { args.push(index); 0x17 },
-        dload { index } => { args.push(index); 0x18 },
-        aload { index } => { args.push(index); 0x19},
+        bipush { val } => {
+            args.push(val);
+            0x10
+        }
+        sipush { val } => {
+            args.push((val >> 8) as u8);
+            args.push(val as u8);
+            0x11
+        }
+        ldc { index } => {
+            args.push(index);
+            0x12
+        }
+        ldc_w { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0x13
+        }
+        ldc2_w { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0x14
+        }
+        iload { index } => {
+            args.push(index);
+            0x15
+        }
+        lload { index } => {
+            args.push(index);
+            0x16
+        }
+        fload { index } => {
+            args.push(index);
+            0x17
+        }
+        dload { index } => {
+            args.push(index);
+            0x18
+        }
+        aload { index } => {
+            args.push(index);
+            0x19
+        }
         iload_0 => 0x1a,
         iload_1 => 0x1b,
         iload_2 => 0x1c,
@@ -311,11 +353,26 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         baload => 0x33,
         caload => 0x34,
         saload => 0x35,
-        istore { index } => { args.push(index); 0x36},
-        lstore { index } => { args.push(index); 0x37},
-        fstore { index } => { args.push(index); 0x38},
-        dstore { index } => { args.push(index); 0x39},
-        astore { index } => { args.push(index); 0x3a},
+        istore { index } => {
+            args.push(index);
+            0x36
+        }
+        lstore { index } => {
+            args.push(index);
+            0x37
+        }
+        fstore { index } => {
+            args.push(index);
+            0x38
+        }
+        dstore { index } => {
+            args.push(index);
+            0x39
+        }
+        astore { index } => {
+            args.push(index);
+            0x3a
+        }
         istore_0 => 0x3b,
         istore_1 => 0x3c,
         istore_2 => 0x3d,
@@ -389,7 +446,11 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         lor => 0x81,
         ixor => 0x82,
         lxor => 0x83,
-        iinc { index, const_ } => {args.push(index); args.push(const_ as u8); 0x84},
+        iinc { index, const_ } => {
+            args.push(index);
+            args.push(const_ as u8);
+            0x84
+        }
         i2l => 0x85,
         i2f => 0x86,
         i2d => 0x87,
@@ -410,86 +471,255 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         fcmpg => 0x96,
         dcmpl => 0x97,
         dcmpg => 0x98,
-        ifeq { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x99 },
-        ifne { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x9a },
-        iflt { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x9b },  
-        ifge { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x9c },
-        ifgt { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x9d },
-        ifle { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x9e },
-        if_icmpeq { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0x9f },
-        if_icmpne { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa0 },
-        if_icmplt { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa1 },
-        if_icmpge { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa2 },
-        if_icmpgt { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa3 },
-        if_icmple { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa4 },
-        if_acmpeq { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa5 },
-        if_acmpne { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa6 },
-        goto { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa7 },
-        jsr { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xa8 },
-        ret { index } => {args.push(index); 0xa9 },
+        ifeq { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x99
+        }
+        ifne { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x9a
+        }
+        iflt { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x9b
+        }
+        ifge { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x9c
+        }
+        ifgt { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x9d
+        }
+        ifle { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x9e
+        }
+        if_icmpeq { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0x9f
+        }
+        if_icmpne { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa0
+        }
+        if_icmplt { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa1
+        }
+        if_icmpge { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa2
+        }
+        if_icmpgt { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa3
+        }
+        if_icmple { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa4
+        }
+        if_acmpeq { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa5
+        }
+        if_acmpne { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa6
+        }
+        goto { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa7
+        }
+        jsr { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xa8
+        }
+        ret { index } => {
+            args.push(index);
+            0xa9
+        }
         tableswitch { default, low, high, jump_offsets } => {
-            args.push((default >> 24) as u8); args.push((default >> 16) as u8); args.push((default >> 8) as u8); args.push(default as u8);
-            args.push((low >> 24) as u8); args.push((low >> 16) as u8); args.push((low >> 8) as u8); args.push(low as u8);
-            args.push((high >> 24) as u8); args.push((high >> 16) as u8); args.push((high >> 8) as u8); args.push(high as u8);
+            args.push((default >> 24) as u8);
+            args.push((default >> 16) as u8);
+            args.push((default >> 8) as u8);
+            args.push(default as u8);
+            args.push((low >> 24) as u8);
+            args.push((low >> 16) as u8);
+            args.push((low >> 8) as u8);
+            args.push(low as u8);
+            args.push((high >> 24) as u8);
+            args.push((high >> 16) as u8);
+            args.push((high >> 8) as u8);
+            args.push(high as u8);
             for a in jump_offsets {
-                args.push((a >> 24) as u8); args.push((a >> 16) as u8); args.push((a >> 8) as u8); args.push(a as u8);
+                args.push((a >> 24) as u8);
+                args.push((a >> 16) as u8);
+                args.push((a >> 8) as u8);
+                args.push(a as u8);
             }
             0xaa
-        },
+        }
         lookupswitch { default, match_offset_pairs } => {
-            args.push((default >> 24) as u8); args.push((default >> 16) as u8); args.push((default >> 8) as u8); args.push(default as u8);
+            args.push((default >> 24) as u8);
+            args.push((default >> 16) as u8);
+            args.push((default >> 8) as u8);
+            args.push(default as u8);
             for (a, b) in match_offset_pairs {
-                args.push((a >> 24) as u8); args.push((a >> 16) as u8); args.push((a >> 8) as u8); args.push(a as u8);
-                args.push((b >> 24) as u8); args.push((b >> 16) as u8); args.push((b >> 8) as u8); args.push(b as u8);
+                args.push((a >> 24) as u8);
+                args.push((a >> 16) as u8);
+                args.push((a >> 8) as u8);
+                args.push(a as u8);
+                args.push((b >> 24) as u8);
+                args.push((b >> 16) as u8);
+                args.push((b >> 8) as u8);
+                args.push(b as u8);
             }
             0xab
-        },
+        }
         ireturn => 0xac,
         lreturn => 0xad,
         freturn => 0xae,
         dreturn => 0xaf,
         areturn => 0xb0,
         return_ => 0xb1,
-        getstatic { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xb2 },
-        putstatic { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xb3 },
-        getfield { index } => { args.push((index >> 8) as u8); args.push(index as u8);  0xb4 },
-        putfield { index } => { args.push((index >> 8) as u8); args.push(index as u8);  0xb5 },
-        invokevirtual { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xb6 },
-        invokespecial { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xb7 },
-        invokestatic { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xb8 },
-        invokeinterface { index, count } => { args.push((index >> 8) as u8); args.push(index as u8); args.push(count); args.push(0); 0xb9 },
-        invokedynamic { index } => { args.push((index >> 8) as u8); args.push(index as u8); args.push(0); args.push(0); 0xba },
-        new { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xbb },
-        newarray { atype } => { args.push(atype); 0xbc},
-        anewarray { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xbd },
+        getstatic { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb2
+        }
+        putstatic { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb3
+        }
+        getfield { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb4
+        }
+        putfield { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb5
+        }
+        invokevirtual { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb6
+        }
+        invokespecial { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb7
+        }
+        invokestatic { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xb8
+        }
+        invokeinterface { index, count } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            args.push(count);
+            args.push(0);
+            0xb9
+        }
+        invokedynamic { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            args.push(0);
+            args.push(0);
+            0xba
+        }
+        new { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xbb
+        }
+        newarray { atype } => {
+            args.push(atype);
+            0xbc
+        }
+        anewarray { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xbd
+        }
         arraylength => 0xbe,
         athrow => 0xbf,
-        checkcast { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xc0 },
-        instanceof { index } => { args.push((index >> 8) as u8); args.push(index as u8); 0xc1 },
+        checkcast { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xc0
+        }
+        instanceof { index } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            0xc1
+        }
         monitorenter => 0xc2,
         monitorexit => 0xc3,
         wide { opcode, index } => {
             args.push(opcode);
-            args.push((index >> 8) as u8); args.push(index as u8);
-            0xc4
-        },
-        wide_iinc { index, const_ } => {
-            args.push(0x84);
-            args.push((index >> 8) as u8); args.push(index as u8);
-            args.push((const_ >> 8) as u8); args.push(const_ as u8);
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
             0xc4
         }
-        multianewarray { index, dimensions } => { args.push((index >> 8) as u8); args.push(index as u8); args.push(dimensions); 0xc5 },
-        ifnull { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xc6 }
-        ifnonnull { branch } => { args.push((branch >> 8) as u8); args.push(branch as u8); 0xc7 }
-        goto_w { branch } => { 
-            args.push((branch >> 24) as u8); args.push((branch >> 16) as u8); args.push((branch >> 8) as u8); args.push(branch as u8);
+        wide_iinc { index, const_ } => {
+            args.push(0x84);
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            args.push((const_ >> 8) as u8);
+            args.push(const_ as u8);
+            0xc4
+        }
+        multianewarray { index, dimensions } => {
+            args.push((index >> 8) as u8);
+            args.push(index as u8);
+            args.push(dimensions);
+            0xc5
+        }
+        ifnull { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xc6
+        }
+        ifnonnull { branch } => {
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
+            0xc7
+        }
+        goto_w { branch } => {
+            args.push((branch >> 24) as u8);
+            args.push((branch >> 16) as u8);
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
             0xc8
-        },
-        jsr_w { branch } => { 
-            args.push((branch >> 24) as u8); args.push((branch >> 16) as u8); args.push((branch >> 8) as u8); args.push(branch as u8);
+        }
+        jsr_w { branch } => {
+            args.push((branch >> 24) as u8);
+            args.push((branch >> 16) as u8);
+            args.push((branch >> 8) as u8);
+            args.push(branch as u8);
             0xc9
-        },
+        }
         breakpoint => 0xca,
         reserved => 0xcb,
         impdep1 => 0xfe,

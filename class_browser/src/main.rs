@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
-extern crate gtk;
 extern crate gdk_pixbuf;
+extern crate gtk;
 extern crate java_class;
 
 mod gui;

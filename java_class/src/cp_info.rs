@@ -2,21 +2,34 @@
 /// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug)]
 pub enum CPInfo {
-    Class { name_index: u16 }, //name_index
-    Fieldref { class_index: u16, name_and_type_index: u16 }, //class_index, name_and_type_index
-    Methodref { class_index: u16, name_and_type_index: u16}, //class_index, name_and_type_index
-    InterfaceMethodref { class_index: u16, name_and_type_index: u16 }, //class_index, name_and_type_index
-    String { string_index: u16 }, //string_index
-    Integer { bytes: u32 }, //bytes
-    Float { bytes: u32 }, //bytes
-    Long { bytes: u64 }, //bytes
-    Double { bytes: u64 }, //bytes
+    Class { name_index: u16 },
+    //name_index
+    Fieldref { class_index: u16, name_and_type_index: u16 },
+    //class_index, name_and_type_index
+    Methodref { class_index: u16, name_and_type_index: u16 },
+    //class_index, name_and_type_index
+    InterfaceMethodref { class_index: u16, name_and_type_index: u16 },
+    //class_index, name_and_type_index
+    String { string_index: u16 },
+    //string_index
+    Integer { bytes: u32 },
+    //bytes
+    Float { bytes: u32 },
+    //bytes
+    Long { bytes: u64 },
+    //bytes
+    Double { bytes: u64 },
+    //bytes
     LongDoubleDummy,
-    NameAndType { name_index: u16, descriptor_index: u16 }, //name_index, descriptor_index
-    Utf8 { length: u16, bytes: Vec<u8> }, //length, bytes
-    MethodHandle { reference_kind: u8, reference_index: u16 }, //reference_kind, reference_index
-    MethodType { descriptor_index: u16 }, //descriptor_index
-    InvokeDynamic { bootstrap_method_attr_index: u16, name_and_type_index: u16 } //bootstrap_method_attr_index, name_and_type_index
+    NameAndType { name_index: u16, descriptor_index: u16 },
+    //name_index, descriptor_index
+    Utf8 { length: u16, bytes: Vec<u8> },
+    //length, bytes
+    MethodHandle { reference_kind: u8, reference_index: u16 },
+    //reference_kind, reference_index
+    MethodType { descriptor_index: u16 },
+    //descriptor_index
+    InvokeDynamic { bootstrap_method_attr_index: u16, name_and_type_index: u16 }, //bootstrap_method_attr_index, name_and_type_index
 }
 
 impl CPInfo {

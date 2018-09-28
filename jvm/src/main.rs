@@ -1,3 +1,4 @@
+extern crate env_logger;
 /// # Explanation of "binary" names:
 /// In the JVM, a "binary" name is a type's name as it appears in a .class file.
 /// Primitives are represented as one character (int=I, long=J)
@@ -11,9 +12,12 @@
 
 
 extern crate java_class;
-#[macro_use] extern crate log;
-extern crate env_logger;
+#[macro_use]
+extern crate log;
 extern crate zip;
+
+use env_logger::{Builder, Env};
+
 //will uncomment the following when it's time to work on the JNI
 //pub mod jni;
 //pub mod jni_impl;
@@ -21,8 +25,6 @@ extern crate zip;
 pub mod types;
 pub mod jvm;
 pub mod threads;
-
-use env_logger::{Builder, Env};
 
 fn main() {
     env_logger::init();

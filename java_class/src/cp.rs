@@ -1,5 +1,5 @@
-use std::ops::Index;
 use cp_info::CPInfo;
+use std::ops::Index;
 use std::string;
 
 /// A struct representing the constant pool of a class file.
@@ -10,7 +10,6 @@ pub struct ConstantPool {
 }
 
 impl ConstantPool {
-
     /// Creates a new empty `ConstantPool`
     pub fn new() -> ConstantPool {
         ConstantPool { cp: Vec::new() }
@@ -27,7 +26,7 @@ impl ConstantPool {
 
     /// Returns the 1-indexed length of the constant pool
     pub fn len(&self) -> u16 {
-        self.cp.len() as u16+1
+        self.cp.len() as u16 + 1
     }
 
     /// Returns a reference to the `Vec` containing the constants
@@ -35,16 +34,13 @@ impl ConstantPool {
     pub fn items(&self) -> &Vec<CPInfo> {
         &self.cp
     }
-    
 }
 
 impl Index<u16> for ConstantPool {
-
     type Output = CPInfo;
 
     fn index(&self, index: u16) -> &CPInfo {
-        &self.cp[index as usize-1]
+        &self.cp[index as usize - 1]
     }
-
 }
 

@@ -4,7 +4,7 @@ use opcodes::Opcode;
 /// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug, Clone)]
 pub enum Attribute {
-    ConstantValue { 
+    ConstantValue {
         constantvalue_index: u16
     },
     Code {
@@ -12,7 +12,7 @@ pub enum Attribute {
         max_locals: u16,
         code: Vec<Opcode>,
         exception_table: Vec<ExceptionTableEntry>,
-        attributes: Vec<Attribute>
+        attributes: Vec<Attribute>,
     },
     StackMapTable {
         entries: Vec<StackMapFrame>
@@ -25,7 +25,7 @@ pub enum Attribute {
     },
     EnclosingMethod {
         class_index: u16,
-        method_index: u16
+        method_index: u16,
     },
     Synthetic,
     Signature {
@@ -73,25 +73,25 @@ pub enum Attribute {
     },
     MethodParameters {
         parameters: Vec<MethodParameterEntry>
-    }
+    },
 }
 
 pub enum MethodParameterAccessFlags {
-    Final     = 0x0010,
+    Final = 0x0010,
     Synthetic = 0x1000,
-    Mandated  = 0x8000
+    Mandated = 0x8000,
 }
 
 #[derive(Debug, Clone)]
 pub struct MethodParameterEntry {
     pub name_index: u16,
-    pub access_flags: u16
+    pub access_flags: u16,
 }
 
 #[derive(Debug, Clone)]
 pub struct BootstrapMethodsEntry {
     pub bootstrap_method_ref: u16,
-    pub bootstrap_arguments: Vec<u16>
+    pub bootstrap_arguments: Vec<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,14 +99,14 @@ pub struct TypeAnnotation {
     pub target_info: TargetInfo,
     pub target_path: TypePath,
     pub type_index: u16,
-    pub element_value_pairs: Vec<ElementValuePair>
+    pub element_value_pairs: Vec<ElementValuePair>,
 }
 
 #[derive(Debug, Clone)]
 pub enum TargetInfo {
     TypeParameterTarget { type_parameter_index: u8 },
     SupertypeTarget { supertype_index: u16 },
-    TypeParameterBoundTarget { type_parameter_index: u8, bound_index: u8},
+    TypeParameterBoundTarget { type_parameter_index: u8, bound_index: u8 },
     EmptyTarget,
     FormalParameterTarget { formal_parameter_index: u8 },
     ThrowsTarget { throws_type_index: u16 },
@@ -124,26 +124,26 @@ pub struct TypePath {
 #[derive(Debug, Clone)]
 pub struct TypePathEntry {
     pub type_path_kind: u8,
-    pub type_argument_index: u8
+    pub type_argument_index: u8,
 }
 
 #[derive(Debug, Clone)]
 pub struct LocalVarTagetTableEntry {
     pub start_pc: u16,
     pub length: u16,
-    pub index: u16
+    pub index: u16,
 }
 
 #[derive(Debug, Clone)]
 pub struct Annotation {
     pub type_index: u16,
-    pub element_value_pairs: Vec<ElementValuePair>
+    pub element_value_pairs: Vec<ElementValuePair>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ElementValuePair {
     pub element_name_index: u16,
-    pub value: ElementValue
+    pub value: ElementValue,
 }
 
 #[derive(Debug, Clone)]
@@ -152,7 +152,7 @@ pub enum ElementValue {
     EnumConstValue { type_name_index: u16, const_name_index: u16 },
     ClassInfoIndex(u16),
     AnnotationValue(Annotation),
-    ArrayValue(Vec<ElementValue>)
+    ArrayValue(Vec<ElementValue>),
 }
 
 #[derive(Debug, Clone)]
@@ -161,7 +161,7 @@ pub struct LocalVariableTypeTableEntry {
     pub length: u16,
     pub name_index: u16,
     pub signature_index: u16,
-    pub index: u16
+    pub index: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -170,13 +170,13 @@ pub struct LocalVariableTableEntry {
     pub length: u16,
     pub name_index: u16,
     pub descriptor_index: u16,
-    pub index: u16
+    pub index: u16,
 }
 
 #[derive(Debug, Clone)]
 pub struct LineNumberTableEntry {
     pub start_pc: u16,
-    pub line_number: u16
+    pub line_number: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -184,31 +184,45 @@ pub struct InnerClassInfo {
     pub inner_class_info_index: u16,
     pub outer_class_info_index: u16,
     pub inner_name_index: u16,
-    pub inner_class_access_flags: u16
+    pub inner_class_access_flags: u16,
 }
 
 #[derive(Debug, Clone)]
 pub enum VerificationTypeInfo {
-    Top, //0
-    Integer, //1
-    Float, //2
-    Null, //5
-    UninitializedThis, //6
-    Object { cpool_index: u16 }, //7
-    UninitializedVariable { offset: u16 } ,//8
-    Long, //4
-    Double //3
+    Top,
+    //0
+    Integer,
+    //1
+    Float,
+    //2
+    Null,
+    //5
+    UninitializedThis,
+    //6
+    Object { cpool_index: u16 },
+    //7
+    UninitializedVariable { offset: u16 },
+    //8
+    Long,
+    //4
+    Double, //3
 }
 
 #[derive(Debug, Clone)]
 pub enum StackMapFrame {
-    SameFrame { offset_delta: u8 }, //0-63
-    SameLocals1Item { offset_delta: u8, stack: VerificationTypeInfo }, // 64-127
-    SameLocals1ItemExtended { offset_delta: u16, stack: VerificationTypeInfo }, //247
-    ChopFrame { absent_locals: u8, offset_delta: u16 }, //248-250
-    SameFrameExtended { offset_delta: u16 }, //251
-    AppendFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo> }, //252-254
-    FullFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo>, stack: Vec<VerificationTypeInfo> } //255
+    SameFrame { offset_delta: u8 },
+    //0-63
+    SameLocals1Item { offset_delta: u8, stack: VerificationTypeInfo },
+    // 64-127
+    SameLocals1ItemExtended { offset_delta: u16, stack: VerificationTypeInfo },
+    //247
+    ChopFrame { absent_locals: u8, offset_delta: u16 },
+    //248-250
+    SameFrameExtended { offset_delta: u16 },
+    //251
+    AppendFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo> },
+    //252-254
+    FullFrame { offset_delta: u16, locals: Vec<VerificationTypeInfo>, stack: Vec<VerificationTypeInfo> }, //255
 }
 
 #[derive(Debug, Clone)]
@@ -216,5 +230,5 @@ pub struct ExceptionTableEntry {
     pub start_pc: u16,
     pub end_pc: u16,
     pub handler_pc: u16,
-    pub catch_type: u16
+    pub catch_type: u16,
 }

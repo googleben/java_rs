@@ -1,13 +1,13 @@
+use java_class::attributes::Attribute;
+use java_class::class::JavaClass;
+use java_class::cp_info::CPInfo;
+use java_class::fields::FieldInfo;
+use java_class::methods::MethodInfo;
+use jvm;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::RwLock;
 use types::JavaType::*;
-use java_class::attributes::Attribute;
-use java_class::methods::MethodInfo;
-use java_class::fields::FieldInfo;
-use std::sync::Arc;
-use std::collections::HashMap;
-use java_class::class::JavaClass;
-use jvm;
-use java_class::cp_info::CPInfo;
 
 /// wrapper for java_class::class::JavaClass that includes runtime data
 #[derive(Debug)]
@@ -24,25 +24,33 @@ pub struct Class {
     pub fields: HashMap<String, Arc<RwLock<Field>>>,
     pub instance_fields: Vec<Arc<InstanceFieldInfo>>,
     pub methods: HashMap<String, Arc<RwLock<Method>>>,
-    pub attributes: Vec<Attribute>
+    pub attributes: Vec<Attribute>,
 }
 
 impl Class {
     pub fn new() -> Class {
         Class {
-            minor_version: 0, major_version: 0, constant_pool: SymbolicConstantPool::new_empty(),
-            access_flags: 0, name: "".to_string(), super_class: None, interfaces: vec!(), fields: HashMap::new(),
-            instance_fields: vec!(), methods: HashMap::new(), attributes: vec!()
+            minor_version: 0,
+            major_version: 0,
+            constant_pool: SymbolicConstantPool::new_empty(),
+            access_flags: 0,
+            name: "".to_string(),
+            super_class: None,
+            interfaces: vec!(),
+            fields: HashMap::new(),
+            instance_fields: vec!(),
+            methods: HashMap::new(),
+            attributes: vec!(),
         }
     }
 
     pub fn initialize_start(&self, class: &JavaClass) -> Result<(), ()> {
         for cp_info in class.constant_pool.items() {
             match cp_info {
-                CPInfo::Class {name_index} => {
+                CPInfo::Class { name_index } => {
                     let name = jvm::get_name_cp(&class.constant_pool, *name_index);
                     jvm::add_to_load(&name);
-                },
+                }
                 _ => {}
             };
         }
@@ -50,11 +58,11 @@ impl Class {
     }
 
     pub fn initialize(&mut self, class: &Box<JavaClass>) -> Result<(), ()> {
-        if self.name.len() > 0 && &self.name[..1]=="[" {
+        if self.name.len() > 0 && &self.name[..1] == "[" {
             //array class, initialize access flags
             let mut sub_name = self.name[1..].to_string();
-            if &sub_name[..1]=="L" {
-                let x = sub_name[1..sub_name.len()-1].to_owned();
+            if &sub_name[..1] == "L" {
+                let x = sub_name[1..sub_name.len() - 1].to_owned();
                 sub_name = x;
             } else {
                 //it's an array of primitives
@@ -72,9 +80,9 @@ impl Class {
         self.constant_pool = SymbolicConstantPool::new(&class.constant_pool)?;
         self.access_flags = class.access_flags;
         self.name = jvm::get_name_cp(&class.constant_pool, class.this_class);
-        
+
         // if this is java/lang/Object it has no super class
-        self.super_class = if self.name=="java/lang/Object" || class.super_class==0 {
+        self.super_class = if self.name == "java/lang/Object" || class.super_class == 0 {
             None
         } else {
             //shouldn't need to guard against circular superclassing since that's done while loading the .class in ::jvm
@@ -119,7 +127,7 @@ fn parse_type(start: char, chars: &mut ::std::str::Chars) -> String {
         ans.push('[');
         ans += &parse_type(chars.next().unwrap(), chars);
         ans
-    } else if start=='L' {
+    } else if start == 'L' {
         loop {
             let c = chars.next().unwrap();
             if c == ';' {
@@ -160,10 +168,10 @@ impl SymbolicConstantPool {
         for cp_info in cp.items() {
             //debug!("CP item {:?}", cp_info);
             let next = match cp_info {
-                CPInfo::Class {name_index} => {
+                CPInfo::Class { name_index } => {
                     let name = jvm::get_name_cp(cp, *name_index);
                     SymbolicConstantPoolEntry::Class(jvm::get_or_load_class(&name)?)
-                },
+                }
                 CPInfo::Fieldref { class_index, name_and_type_index } => {
                     let class_name = jvm::get_name_cp(cp, *class_index);
                     let name_and_type = &cp[*name_and_type_index];
@@ -171,12 +179,12 @@ impl SymbolicConstantPool {
                         CPInfo::NameAndType { name_index, descriptor_index } => {
                             (jvm::get_name_cp(cp, *name_index),
                              jvm::get_name_cp(cp, *descriptor_index))
-                        },
+                        }
                         _ => panic!()
                     };
                     let class = jvm::get_or_load_class(&class_name)?;
                     SymbolicConstantPoolEntry::Fieldref { class, name, type_ }
-                },
+                }
                 CPInfo::Methodref { class_index, name_and_type_index } => {
                     let class_name = jvm::get_name_cp(cp, *class_index);
                     let name_and_type = &cp[*name_and_type_index];
@@ -184,13 +192,13 @@ impl SymbolicConstantPool {
                         CPInfo::NameAndType { name_index, descriptor_index } => {
                             (jvm::get_name_cp(cp, *name_index),
                              jvm::get_name_cp(cp, *descriptor_index))
-                        },
+                        }
                         _ => panic!()
                     };
-                    let name = name+&type_;
+                    let name = name + &type_;
                     let class = jvm::get_or_load_class(&class_name)?;
                     SymbolicConstantPoolEntry::Methodref { class, name }
-                },
+                }
                 CPInfo::InterfaceMethodref { class_index, name_and_type_index } => {
                     let class_name = jvm::get_name_cp(cp, *class_index);
                     let name_and_type = &cp[*name_and_type_index];
@@ -198,36 +206,36 @@ impl SymbolicConstantPool {
                         CPInfo::NameAndType { name_index, descriptor_index } => {
                             (jvm::get_name_cp(cp, *name_index),
                              jvm::get_name_cp(cp, *descriptor_index))
-                        },
+                        }
                         _ => panic!()
                     };
-                    let name = name+&type_;
+                    let name = name + &type_;
                     let class = jvm::get_or_load_class(&class_name)?;
                     SymbolicConstantPoolEntry::InterfaceMethodref { class, name }
-                },
+                }
                 CPInfo::String { string_index } => {
                     SymbolicConstantPoolEntry::String(Arc::new(jvm::get_name_cp(cp, *string_index)))
-                },
+                }
                 CPInfo::Integer { bytes } => SymbolicConstantPoolEntry::Integer(*bytes as i32),
                 CPInfo::Float { bytes } => {
                     unsafe {
                         SymbolicConstantPoolEntry::Float(::std::mem::transmute::<u32, f32>(*bytes))
                     }
-                },
+                }
                 CPInfo::Long { bytes } => SymbolicConstantPoolEntry::Long(*bytes as i64),
                 CPInfo::Double { bytes } => {
                     unsafe {
                         SymbolicConstantPoolEntry::Double(::std::mem::transmute::<u64, f64>(*bytes))
                     }
-                },
+                }
                 _ => SymbolicConstantPoolEntry::DummyEntry
             };
             match next {
-                SymbolicConstantPoolEntry::Long {..} | 
-                SymbolicConstantPoolEntry::Double {..} => {
+                SymbolicConstantPoolEntry::Long { .. } |
+                SymbolicConstantPoolEntry::Double { .. } => {
                     ans.push(next);
                     ans.push(SymbolicConstantPoolEntry::DummyEntry);
-                },
+                }
                 _ => ans.push(next)
             }
         }
@@ -253,7 +261,7 @@ pub enum SymbolicConstantPoolEntry {
     Float(f32),
     Long(i64),
     Double(f64),
-    DummyEntry
+    DummyEntry,
     //TODO: MethodHandle, MethodType, InvokeDynamic
 }
 
@@ -271,11 +279,10 @@ pub struct Field {
     /// the attributes of the field
     pub attributes: Vec<Attribute>,
     /// the value of the field
-    pub value: Arc<RwLock<JavaType>>
+    pub value: Arc<RwLock<JavaType>>,
 }
 
 impl Field {
-
     fn get_default_value(descriptor: &String) -> JavaType {
         let start = descriptor.chars().next().unwrap();
         match start {
@@ -307,8 +314,14 @@ impl Field {
     pub fn from_instance_field_info(info: Arc<RwLock<InstanceFieldInfo>>) -> Field {
         let f = info.read().unwrap();
         let value = Arc::new(RwLock::new(Field::get_default_value(&f.descriptor_raw)));
-        Field { access_flags: f.access_flags, name: f.name.to_owned(), descriptor_raw: f.descriptor_raw.to_owned(),
-               descriptor: f.descriptor.to_owned(), attributes: f.attributes.clone(), value }
+        Field {
+            access_flags: f.access_flags,
+            name: f.name.to_owned(),
+            descriptor_raw: f.descriptor_raw.to_owned(),
+            descriptor: f.descriptor.to_owned(),
+            attributes: f.attributes.clone(),
+            value,
+        }
     }
 }
 
@@ -324,7 +337,7 @@ pub struct InstanceFieldInfo {
     /// the descriptor in binary format
     pub descriptor_raw: String,
     /// the attributes of the field
-    pub attributes: Vec<Attribute>
+    pub attributes: Vec<Attribute>,
 }
 
 impl InstanceFieldInfo {
@@ -336,7 +349,7 @@ impl InstanceFieldInfo {
         let mut descriptor_chars = d_r_2.chars();
         let descriptor = parse_type(descriptor_chars.next().unwrap(), &mut descriptor_chars);
         let attributes = field_info.attributes.clone();
-        InstanceFieldInfo {access_flags, name, descriptor_raw, descriptor, attributes}
+        InstanceFieldInfo { access_flags, name, descriptor_raw, descriptor, attributes }
     }
 }
 
@@ -359,16 +372,16 @@ pub struct Method {
     pub attributes: Vec<Attribute>,
     /// the index of the attribute containing the bytecode of the method
     /// guaranteed to be Attribute::Code if this method is not native or abstract
-    pub code_attr_index: usize
+    pub code_attr_index: usize,
 }
 
 impl Method {
     pub fn new(class: &JavaClass, method_info: &MethodInfo) -> Result<Method, ()> {
-        let (parameters, return_type) = 
+        let (parameters, return_type) =
             parse_parameters_return(&jvm::get_name(class, &class.constant_pool[method_info.descriptor_index]));
         let name = jvm::get_name(class, &class.constant_pool[method_info.name_index]);
         let descriptor = jvm::get_name(class, &class.constant_pool[method_info.descriptor_index]);
-        let repr = name.to_owned()+&descriptor;
+        let repr = name.to_owned() + &descriptor;
         let access_flags = method_info.access_flags;
         let attributes = method_info.attributes.clone();
         //dirty use of a closure for early return, probably should be separate method
@@ -380,7 +393,7 @@ impl Method {
                 for code_attr_index in 0..attributes.len() {
                     let code_attr = &attributes[code_attr_index];
                     match code_attr {
-                        Attribute::Code {..} => return Ok(code_attr_index),
+                        Attribute::Code { .. } => return Ok(code_attr_index),
                         _ => {}
                     }
                 }
@@ -388,7 +401,6 @@ impl Method {
             })()
         }?;
         Ok(Method { name, descriptor, repr, parameters, return_type, access_flags, attributes, code_attr_index })
-        
     }
 }
 
@@ -404,45 +416,45 @@ pub enum JavaType {
     Double(f64),
     ClassInstance { class: Arc<RwLock<Class>>, fields: HashMap<String, JavaType> },
     Object(Arc<RwLock<JavaType>>),
-    Null
+    Null,
 }
 
 impl ::std::cmp::PartialEq for JavaType {
     fn eq(&self, other: &JavaType) -> bool {
         match self {
             Boolean(val) => match other {
-                Boolean(val2) => val==val2,
+                Boolean(val2) => val == val2,
                 _ => false
             }
             Byte(val) => match other {
-                Byte(val2) => val==val2,
+                Byte(val2) => val == val2,
                 _ => false
             },
             Short(val) => match other {
-                Short(val2) => val==val2,
+                Short(val2) => val == val2,
                 _ => false
             },
             Char(val) => match other {
-                Char(val2) => val==val2,
+                Char(val2) => val == val2,
                 _ => false
             },
             Int(val) => match other {
-                Int(val2) => val==val2,
+                Int(val2) => val == val2,
                 _ => false
             },
             Float(val) => match other {
-                Float(val2) => val==val2,
+                Float(val2) => val == val2,
                 _ => false
             },
             Long(val) => match other {
-                Long(val2) => val==val2,
+                Long(val2) => val == val2,
                 _ => false
             },
             Double(val) => match other {
-                Double(val2) => val==val2,
+                Double(val2) => val == val2,
                 _ => false
             },
-            ClassInstance {..} => false, //should never be called on 2 ClassInstances
+            ClassInstance { .. } => false, //should never be called on 2 ClassInstances
             Object(a) => match other {
                 Object(b) => Arc::ptr_eq(a, b),
                 _ => false

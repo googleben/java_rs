@@ -210,5 +210,5 @@ pub enum Opcode {
 
     reserved,
     impdep1,
-    impdep2
+    impdep2,
 }
