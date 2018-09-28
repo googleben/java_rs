@@ -139,7 +139,7 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0x81 => lor,
         0x82 => ixor,
         0x83 => lxor,
-        0x84 => iinc { index: r.next().or(Err(()))?, const_: r.next().or(Err(()))? },
+        0x84 => iinc { index: r.next().or(Err(()))?, const_: r.next().or(Err(()))? as i8 },
         0x85 => i2l,
         0x86 => i2f,
         0x87 => i2d,
@@ -160,22 +160,22 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0x96 => fcmpg,
         0x97 => dcmpl,
         0x98 => dcmpg,
-        0x99 => ifeq { branch: r.next16().or(Err(()))? },
-        0x9a => ifne { branch: r.next16().or(Err(()))? },
-        0x9b => iflt { branch: r.next16().or(Err(()))? },
-        0x9c => ifge { branch: r.next16().or(Err(()))? },
-        0x9d => ifgt { branch: r.next16().or(Err(()))? },
-        0x9e => ifle { branch: r.next16().or(Err(()))? },
-        0x9f => if_icmpeq { branch: r.next16().or(Err(()))? },
-        0xa0 => if_icmpne { branch: r.next16().or(Err(()))? },
-        0xa1 => if_icmplt { branch: r.next16().or(Err(()))? },
-        0xa2 => if_icmpge { branch: r.next16().or(Err(()))? },
-        0xa3 => if_icmpgt { branch: r.next16().or(Err(()))? },
-        0xa4 => if_icmple { branch: r.next16().or(Err(()))? },
-        0xa5 => if_acmpeq { branch: r.next16().or(Err(()))? },
-        0xa6 => if_acmpne { branch: r.next16().or(Err(()))? },
-        0xa7 => goto { branch: r.next16().or(Err(()))? },
-        0xa8 => jsr { branch: r.next16().or(Err(()))? },
+        0x99 => ifeq { branch: r.next16().or(Err(()))? as i16 },
+        0x9a => ifne { branch: r.next16().or(Err(()))? as i16 },
+        0x9b => iflt { branch: r.next16().or(Err(()))? as i16 },
+        0x9c => ifge { branch: r.next16().or(Err(()))? as i16 },
+        0x9d => ifgt { branch: r.next16().or(Err(()))? as i16 },
+        0x9e => ifle { branch: r.next16().or(Err(()))? as i16 },
+        0x9f => if_icmpeq { branch: r.next16().or(Err(()))? as i16 },
+        0xa0 => if_icmpne { branch: r.next16().or(Err(()))? as i16 },
+        0xa1 => if_icmplt { branch: r.next16().or(Err(()))? as i16 },
+        0xa2 => if_icmpge { branch: r.next16().or(Err(()))? as i16 },
+        0xa3 => if_icmpgt { branch: r.next16().or(Err(()))? as i16 },
+        0xa4 => if_icmple { branch: r.next16().or(Err(()))? as i16 },
+        0xa5 => if_acmpeq { branch: r.next16().or(Err(()))? as i16 },
+        0xa6 => if_acmpne { branch: r.next16().or(Err(()))? as i16 },
+        0xa7 => goto { branch: r.next16().or(Err(()))? as i16 },
+        0xa8 => jsr { branch: r.next16().or(Err(()))? as i16 },
         0xa9 => ret { index: r.next().or(Err(()))? },
         0xaa => {
             while (r.dist()-method_start)%4!=0 { r.next().or(Err(()))?; }
@@ -191,13 +191,13 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         },
         0xab => {
             while (r.dist()-method_start)%4!=0 { r.next().or(Err(()))?; }
-            let default = r.next32().or(Err(()))?;
+            let default = r.next32().or(Err(()))? as i32;
             let npairs = r.next32().or(Err(()))? as i32;
             let mut offsets = Vec::new();
             for _ in 0..npairs {
                 offsets.push(
-                    (r.next32().or(Err(()))?, 
-                    r.next32().or(Err(()))?));
+                    (r.next32().or(Err(()))? as i32, 
+                    r.next32().or(Err(()))? as i32));
             }
             lookupswitch { default, match_offset_pairs: offsets }
         },
@@ -230,7 +230,7 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
             if opcode == 0x84 {
                 wide_iinc {
                     index: r.next16().or(Err(()))?,
-                    const_: r.next16().or(Err(()))?,
+                    const_: r.next16().or(Err(()))? as i16,
                 }
             } else {
                 wide { 
@@ -240,10 +240,10 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
             }
         }
         0xc5 => multianewarray { index: r.next16().or(Err(()))?, dimensions: r.next().or(Err(()))? },
-        0xc6 => ifnull { branch: r.next16().or(Err(()))? },
-        0xc7 => ifnonnull { branch: r.next16().or(Err(()))? },
-        0xc8 => goto_w { branch: r.next32().or(Err(()))? },
-        0xc9 => jsr_w { branch: r.next32().or(Err(()))? },
+        0xc6 => ifnull { branch: r.next16().or(Err(()))? as i16 },
+        0xc7 => ifnonnull { branch: r.next16().or(Err(()))? as i16 },
+        0xc8 => goto_w { branch: r.next32().or(Err(()))? as i32 },
+        0xc9 => jsr_w { branch: r.next32().or(Err(()))? as i32 },
         0xca => breakpoint,
         0xcb...0xfd => reserved,
         0xfe => impdep1,
@@ -389,7 +389,7 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         lor => 0x81,
         ixor => 0x82,
         lxor => 0x83,
-        iinc { index, const_ } => {args.push(index); args.push(const_); 0x84},
+        iinc { index, const_ } => {args.push(index); args.push(const_ as u8); 0x84},
         i2l => 0x85,
         i2f => 0x86,
         i2d => 0x87,

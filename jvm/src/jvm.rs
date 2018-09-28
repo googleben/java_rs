@@ -30,6 +30,7 @@ struct JVM {
     pub jars: Vec<ZipArchive<File>>,
     pub classpath: Box<[String]>,
     pub classes: HashMap<String, Arc<RwLock<Class>>>,
+    pub to_load: Vec<String>,
     pub to_init: Vec<(Arc<RwLock<Class>>, Arc<Box<JavaClass>>)>
 }
 
@@ -48,6 +49,7 @@ pub fn start(classpath: Box<[String]>, entry_point: &String) {
         jars,
         classpath,
         classes: HashMap::<String, Arc<RwLock<Class>>>::new(),
+        to_load: Vec::new(),
         to_init: Vec::new()
     };
     unsafe {
@@ -116,7 +118,6 @@ pub fn is_class_loaded(name: &String) -> bool {
     jvm.classes.contains_key(name)
 }
 
-//TODO: Pass up throwable from load_class
 /// If the class is defined, return it, otherwise attempt to load it
 pub fn get_or_load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     //if the class is already defined return it
@@ -127,13 +128,12 @@ pub fn get_or_load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     load_class(name)
 }
 
-pub fn get_or_load_defer(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
-    //if the class is already defined return it
-    if is_class_loaded(name) {
-        return Ok(get_class(name).unwrap()); //OK to unwrap since is_class_loaded guarantees existance
+pub fn add_to_load(name: &String) {
+    if !is_class_loaded(name) {
+         let jvm = jvm();
+         let mut jvm = jvm.write().unwrap();
+         jvm.to_load.push(name.to_owned());
     }
-    //otherwise, attempt to load it
-    load_class_2(name)
 }
 
 /// helper function to get the names of values from a "wrapper" CPInfo struct such as CPInfo::Class
@@ -167,36 +167,60 @@ pub fn get_name_cp(cp: &::java_class::cp::ConstantPool, index: u16) -> String {
 fn has_to_load() -> bool {
     let jvm = jvm();
     let jvm = jvm.read().unwrap();
+    !jvm.to_load.is_empty()
+}
+
+fn has_to_init() -> bool {
+    let jvm = jvm();
+    let jvm = jvm.read().unwrap();
     !jvm.to_init.is_empty()
 }
 
-fn get_to_load() -> (Arc<RwLock<Class>>, Arc<Box<JavaClass>>) {
-    let mut ans = None;
-    {
-        let jvm = jvm();
-        let jvm = jvm.read().unwrap();
-        let p = &jvm.to_init[0];
-        ans = Some((p.0.clone(), p.1.clone()));
-    }
+fn get_to_load() -> String {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
-    jvm.to_init.remove(0);
-    ans.unwrap()
+    jvm.to_load.remove(0)
 }
 
+fn get_to_init() -> (Arc<RwLock<Class>>, Arc<Box<JavaClass>>) {
+    let jvm = jvm();
+    let mut jvm = jvm.write().unwrap();
+    let i = jvm.to_init.len()-1;
+    jvm.to_init.remove(i)
+}
+
+fn load_while() -> Result<(), ()> {
+    while has_to_load() {
+        let to_l = get_to_load();
+        if is_class_loaded(&to_l) {
+            continue;
+        }
+        debug!("Loading class {}", to_l);
+        load_class_2(&to_l)?;
+        debug!("Done loading class {}", to_l);
+    }
+    Ok(())
+}
+
+//TODO: On error return Err(Throwable) JVM Specification §5.3.5
 pub fn load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     let ans = load_class_2(name);
     debug!("Loaded {}, intializing stuff", name);
     
-    while has_to_load() {
-        debug!("Found class to initialize");
-        let cx = get_to_load();
-        let mut c = cx.0.write().unwrap();
-        let name_2 = get_name_cp(&cx.1.constant_pool, cx.1.this_class);
-        debug!("Initializing {}", name_2);
-        c.initialize_start(&cx.1)?;
-        c.initialize(&cx.1)?;
-        debug!("Done initializing {}", name_2);
+    while has_to_init() || has_to_load() {
+        load_while()?;
+        if has_to_init() {
+            debug!("Found class to initialize");
+            let cx = get_to_init();
+            let mut c = cx.0.write().unwrap();
+            let mut name_2 = "Unknown class name".to_string();
+            if cx.1.constant_pool.len() > 1 {
+                name_2 = get_name_cp(&cx.1.constant_pool, cx.1.this_class);
+            }
+            debug!("Initializing {}", name_2);
+            c.initialize(&cx.1)?;
+            debug!("Done initializing {}", name_2);
+        }
     }
     debug!("No more classes to initialize");
     ans
@@ -208,11 +232,10 @@ fn add_to_init(class: Arc<RwLock<Class>>, jc: Box<JavaClass>) {
     jvm.to_init.push((class, Arc::new(jc)));
 }
 
-//TODO: On error return Err(Throwable) §5.3.5
 /// Load a class using the bootstrap classloader
 fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     //if the class is a primitive or an array, special case load
-    debug!("Trying to load class {}", name);
+    
     let mut chars = name.chars();
     let c = chars.next().unwrap();
     match c {
@@ -270,11 +293,12 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
             let mut jvm = jvm.write().unwrap();
             jvm.classes.insert(name.to_owned(), class.clone());
             drop(jvm);
-            let subclass = load_class(&sub_name)?;
-            let access_flags = subclass.read().unwrap().access_flags & class::AccessFlags::Public as u16;
-            let c = class.clone();
-            let mut c = c.write().unwrap();
-            c.access_flags = access_flags;
+            if &sub_name[..1]=="[" {
+                load_class_2(&sub_name)?;
+            } else {
+                add_to_load(&sub_name);
+            }
+            add_to_init(class.clone(), Box::new(JavaClass::empty()));
             return Ok(class);
         }
         _ => {}
@@ -282,11 +306,12 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     //resolve the path of the .class file
     
     //load the .class into a static representation
+    debug!("Trying to load class {}", name);
     let class = match find_class_jar(&name) {
         Some(bytes) => {
             match JavaClass::new_from_bytes(bytes) {
                 Ok(c) => c,
-                Err(a) =>  { error!("Class could not be loaded from zip: {:?}", a); panic!(); return Err(()) }
+                Err(a) =>  { error!("Class could not be loaded from zip: {:?}", a); return Err(()) }
             }
         },
         None => {
@@ -300,7 +325,7 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
         }
     };
     let class = Box::new(class);
-    debug!("Found class");
+    debug!("Loaded .class file");
     //load superinterfaces and superclasses
     //if the class is not java.lang.Object, attempt to load its superclass
     if name!="java/lang/Object" {
@@ -322,6 +347,7 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     }
     debug!("Making Class struct");
     let jc = Class::new();
+    jc.initialize_start(&class)?;
     let arc = Arc::new(RwLock::new(jc));
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();

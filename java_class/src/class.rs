@@ -51,6 +51,21 @@ pub struct JavaClass {
 
 impl JavaClass {
 
+    pub fn empty() -> JavaClass {
+        JavaClass {
+            minor_version: 0,
+            major_version: 0,
+            constant_pool: ConstantPool::new(),
+            access_flags: 0,
+            this_class: 0,
+            super_class: 0,
+            interfaces: Vec::new(),
+            fields: Vec::new(),
+            methods: Vec::new(),
+            attributes: Vec::new()
+        }
+    }
+
     pub fn new(file_name: &str) -> io::Result<JavaClass> {
         JavaClass::build(JavaClassReader::new(file_name)?)
     }

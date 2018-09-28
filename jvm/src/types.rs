@@ -41,24 +41,31 @@ impl Class {
             match cp_info {
                 CPInfo::Class {name_index} => {
                     let name = jvm::get_name_cp(&class.constant_pool, *name_index);
-                    jvm::get_or_load_defer(&name)?;
+                    jvm::add_to_load(&name);
                 },
                 _ => {}
             };
-        }
-        //super class must not be an interface
-        if class.super_class != 0 {
-            let super_class = jvm::get_or_load_defer(&jvm::get_name_cp(&class.constant_pool, class.super_class))?;
-        }
-        //interfaces must be interfaces
-        for interface_index in &class.interfaces {
-            //shouldn't need to guard against circular interfacing since that's done while loading the .class in ::jvm
-            let ans = jvm::get_or_load_defer(&jvm::get_name_cp(&class.constant_pool, *interface_index))?;
         }
         Ok(())
     }
 
     pub fn initialize(&mut self, class: &Box<JavaClass>) -> Result<(), ()> {
+        if self.name.len() > 0 && &self.name[..1]=="[" {
+            //array class, initialize access flags
+            let mut sub_name = self.name[1..].to_string();
+            if &sub_name[..1]=="L" {
+                let x = sub_name[1..sub_name.len()-1].to_owned();
+                sub_name = x;
+            } else {
+                //it's an array of primitives
+                self.access_flags = ::java_class::class::AccessFlags::Public as u16;
+                return Ok(());
+            }
+            //unwrap should be ok since the subclass goes ahead of the array class in initialization order
+            let subclass = jvm::get_class(&sub_name).unwrap();
+            self.access_flags = subclass.read().unwrap().access_flags & ::java_class::class::AccessFlags::Public as u16;
+            return Ok(());
+        }
         debug!("Initializing class");
         self.minor_version = class.minor_version;
         self.major_version = class.major_version;
@@ -71,13 +78,13 @@ impl Class {
             None
         } else {
             //shouldn't need to guard against circular superclassing since that's done while loading the .class in ::jvm
-            let ans = jvm::get_or_load_class(&jvm::get_name_cp(&class.constant_pool, class.super_class))?;
+            let ans = jvm::get_class(&jvm::get_name_cp(&class.constant_pool, class.super_class)).unwrap();
             Some(ans)
         };
         self.interfaces = Vec::with_capacity(class.interfaces.len());
         for interface_index in &class.interfaces {
             //shouldn't need to guard against circular interfacing since that's done while loading the .class in ::jvm
-            let ans = jvm::get_or_load_class(&jvm::get_name_cp(&class.constant_pool, *interface_index))?;
+            let ans = jvm::get_class(&jvm::get_name_cp(&class.constant_pool, *interface_index)).unwrap();
             self.interfaces.push(ans);
         }
         self.fields = HashMap::new();
