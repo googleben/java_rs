@@ -16,8 +16,6 @@ extern crate java_class;
 extern crate log;
 extern crate zip;
 
-use env_logger::{Builder, Env};
-
 //will uncomment the following when it's time to work on the JNI
 //pub mod jni;
 //pub mod jni_impl;
@@ -28,11 +26,11 @@ pub mod threads;
 
 fn main() {
     env_logger::init();
-    let cp = Box::new(["E:\\".to_owned()]);
+    let cp = Box::new([".".to_owned()]);
     jvm::start(cp, &"Tester".to_owned());
     //println!("{:?}", jvm::load_class(&"Tester".to_owned()));
     match jvm::load_class(&"Tester".to_owned()) {
-        Ok(_) => println!("ok"),
-        Err(a) => println!("{:?}", a)
+        Some(_) => println!("ok"),
+        None => println!("err")
     }
 }

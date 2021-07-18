@@ -11,3 +11,4 @@ pub mod bytecode_tools;
 pub mod methods;
 pub mod fields;
 pub mod class;
+pub mod gen;

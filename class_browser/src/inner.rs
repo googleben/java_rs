@@ -1,5 +1,4 @@
 use gtk::*;
-use gtk::prelude::*;
 use java_class::attributes;
 use java_class::attributes::Annotation;
 use java_class::attributes::Attribute::*;
@@ -17,7 +16,6 @@ use java_class::fields;
 use java_class::methods;
 use java_class::opcodes::Opcode;
 use java_class::opcodes::Opcode::*;
-use std::mem;
 use std::str;
 
 pub fn class_to_tree(class: JavaClass) -> TreeView {
@@ -50,7 +48,7 @@ pub fn class_to_tree(class: JavaClass) -> TreeView {
     let interfaces = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"interfaces", &""]);
     for interface in class.interfaces {
         let name = get_name(&class.constant_pool, interface);
-        ans.insert_with_values(Some(&interfaces), None, &[0, 1], &[&format!("{}", interface), &format!("{}", name)]);
+        ans.insert_with_values(Some(&interfaces), None, &[0, 1], &[&format!("{}", interface), &name.to_string()]);
     }
     let fields = ans.insert_with_values(Some(&iter), None, &[0, 1], &[&"Fields", &""]);
     for f in class.fields {
@@ -81,28 +79,24 @@ fn get_name(cp: &ConstantPool, index: u16) -> String {
         CPInfo::Utf8 { bytes, .. } => { str::from_utf8(bytes.as_slice()).unwrap().to_owned() }
         CPInfo::String { string_index } => { get_name(cp, *string_index) }
         CPInfo::NameAndType { name_index, descriptor_index } => {
-            (get_name(cp, *name_index).to_owned() + " " + &get_name(cp, *descriptor_index))
+            get_name(cp, *name_index) + " " + &get_name(cp, *descriptor_index)
         }
         CPInfo::Methodref { class_index, name_and_type_index } |
         CPInfo::Fieldref { class_index, name_and_type_index } |
         CPInfo::InterfaceMethodref { class_index, name_and_type_index } => {
-            get_name(cp, *class_index).to_owned() + " " + &get_name(cp, *name_and_type_index)
+            get_name(cp, *class_index) + " " + &get_name(cp, *name_and_type_index)
         }
         CPInfo::Integer { bytes } => {
             format!("{}", *bytes as i32)
         }
         CPInfo::Float { bytes } => {
-            unsafe {
-                format!("{}", mem::transmute::<u32, f32>(*bytes))
-            }
+            format!("{}", f32::from_bits(*bytes))
         }
         CPInfo::Long { bytes } => {
             format!("{}", *bytes as i64)
         }
         CPInfo::Double { bytes } => {
-            unsafe {
-                format!("{}", mem::transmute::<u64, f64>(*bytes))
-            }
+            format!("{}", f64::from_bits(*bytes))
         }
         CPInfo::InvokeDynamic { name_and_type_index, .. } => {
             get_name(cp, *name_and_type_index)
@@ -253,8 +247,7 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                 let mut pos = 0;
                 insert_code(store, &iter_b, code, cp, &mut pos);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"exception_table", &""]);
-                for i in 0..exception_table.len() {
-                    let e = &exception_table[i];
+                for (i, e) in exception_table.iter().enumerate() {
                     let iter_d = store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&format!("Entry {}", i), &""]);
                     store.insert_with_values(Some(&iter_d), None, &[0, 1], &[&"start_pc", &format!("{}", e.start_pc)]);
                     store.insert_with_values(Some(&iter_d), None, &[0, 1], &[&"end_pc", &format!("{}", e.end_pc)]);
@@ -340,7 +333,7 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                 }
             }
             EnclosingMethod { class_index, method_index } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ConstantValue", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"EnclosingMethod", &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"class_index", &format!("{}", class_index)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"method_index", &format!("{}", method_index)]);
             }
@@ -382,7 +375,7 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
                 }
             }
             LocalVariableTypeTable { local_variable_type_table } => {
-                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"ConstantValue", &""]);
+                let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"LocalVariableTypeTable", &""]);
                 for lv in local_variable_type_table {
                     let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"Entry", &""]);
                     store.insert_with_values(Some(&iter_c), None, &[0, 1], &[&"start_pc", &format!("{}", lv.start_pc)]);
@@ -405,18 +398,18 @@ fn insert_attributes(cp: &ConstantPool, store: &TreeStore, iter: &TreeIter, attr
             }
             RuntimeVisibleParameterAnnotations { parameter_annotations } => {
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"RuntimeVisibleParameterAnnotations", &""]);
-                for i in 0..parameter_annotations.len() {
+                for (i, e) in parameter_annotations.iter().enumerate() {
                     let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&format!("{}", i), &""]);
-                    for a in &parameter_annotations[i] {
+                    for a in e {
                         insert_annotation(store, &iter_c, a);
                     }
                 }
             }
             RuntimeInvisibleParameterAnnotations { parameter_annotations } => {
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&"RuntimeInvisibleParameterAnnotations", &""]);
-                for i in 0..parameter_annotations.len() {
+                for (i, e) in parameter_annotations.iter().enumerate() {
                     let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&format!("{}", i), &""]);
-                    for a in &parameter_annotations[i] {
+                    for a in e {
                         insert_annotation(store, &iter_c, a);
                     }
                 }
@@ -1324,7 +1317,7 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &Const
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lneg", pos), &""]);
                 *pos += 1;
             }
-            lookupswitch { default, match_offset_pairs } => {
+            lookupswitch { default, match_offset_pairs, .. } => {
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. lookupswitch", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"default", &format!("{} ({})", default, default as u32 + *pos)]);
                 let iter_c = store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"match_offset_pairs", &""]);
@@ -1469,7 +1462,7 @@ fn insert_code(store: &TreeStore, iter: &TreeIter, code: Vec<Opcode>, cp: &Const
                 store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. swap", pos), &""]);
                 *pos += 1;
             }
-            tableswitch { default, low, high, jump_offsets } => {
+            tableswitch { default, low, high, jump_offsets, .. } => {
                 let iter_b = store.insert_with_values(Some(&iter_a), None, &[0, 1], &[&format!("{}. tableswitch", pos), &""]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"default", &format!("{} ({})", default, default as u32 + *pos)]);
                 store.insert_with_values(Some(&iter_b), None, &[0, 1], &[&"low", &format!("{}", low)]);

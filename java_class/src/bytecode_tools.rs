@@ -4,8 +4,8 @@ use opcodes::Opcode::*;
 
 /// Reads in a single opcode from a `JavaClassReader` and returns the read-in Opcode.
 /// Should never fail with a well-formed Java 8 class file.
-pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, ()> {
-    let bytecode = r.next().or(Err(()))?;
+pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Option<Opcode> {
+    let bytecode = r.next8().ok()?;
     let ans = match bytecode {
         0x00 => nop,
         0x01 => aconst_null,
@@ -23,16 +23,16 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0x0d => fconst_2,
         0x0e => dconst_0,
         0x0f => dconst_1,
-        0x10 => bipush { val: r.next().or(Err(()))? },
-        0x11 => sipush { val: r.next16().or(Err(()))? },
-        0x12 => ldc { index: r.next().or(Err(()))? },
-        0x13 => ldc_w { index: r.next16().or(Err(()))? },
-        0x14 => ldc2_w { index: r.next16().or(Err(()))? },
-        0x15 => iload { index: r.next().or(Err(()))? },
-        0x16 => lload { index: r.next().or(Err(()))? },
-        0x17 => fload { index: r.next().or(Err(()))? },
-        0x18 => dload { index: r.next().or(Err(()))? },
-        0x19 => aload { index: r.next().or(Err(()))? },
+        0x10 => bipush { val: r.next8().ok()? },
+        0x11 => sipush { val: r.next16().ok()? },
+        0x12 => ldc { index: r.next8().ok()? },
+        0x13 => ldc_w { index: r.next16().ok()? },
+        0x14 => ldc2_w { index: r.next16().ok()? },
+        0x15 => iload { index: r.next8().ok()? },
+        0x16 => lload { index: r.next8().ok()? },
+        0x17 => fload { index: r.next8().ok()? },
+        0x18 => dload { index: r.next8().ok()? },
+        0x19 => aload { index: r.next8().ok()? },
         0x1a => iload_0,
         0x1b => iload_1,
         0x1c => iload_2,
@@ -61,11 +61,11 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0x33 => baload,
         0x34 => caload,
         0x35 => saload,
-        0x36 => istore { index: r.next().or(Err(()))? },
-        0x37 => lstore { index: r.next().or(Err(()))? },
-        0x38 => fstore { index: r.next().or(Err(()))? },
-        0x39 => dstore { index: r.next().or(Err(()))? },
-        0x3a => astore { index: r.next().or(Err(()))? },
+        0x36 => istore { index: r.next8().ok()? },
+        0x37 => lstore { index: r.next8().ok()? },
+        0x38 => fstore { index: r.next8().ok()? },
+        0x39 => dstore { index: r.next8().ok()? },
+        0x3a => astore { index: r.next8().ok()? },
         0x3b => istore_0,
         0x3c => istore_1,
         0x3d => istore_2,
@@ -139,7 +139,7 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0x81 => lor,
         0x82 => ixor,
         0x83 => lxor,
-        0x84 => iinc { index: r.next().or(Err(()))?, const_: r.next().or(Err(()))? as i8 },
+        0x84 => iinc { index: r.next8().ok()?, const_: r.next8().ok()? as i8 },
         0x85 => i2l,
         0x86 => i2f,
         0x87 => i2d,
@@ -160,46 +160,48 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0x96 => fcmpg,
         0x97 => dcmpl,
         0x98 => dcmpg,
-        0x99 => ifeq { branch: r.next16().or(Err(()))? as i16 },
-        0x9a => ifne { branch: r.next16().or(Err(()))? as i16 },
-        0x9b => iflt { branch: r.next16().or(Err(()))? as i16 },
-        0x9c => ifge { branch: r.next16().or(Err(()))? as i16 },
-        0x9d => ifgt { branch: r.next16().or(Err(()))? as i16 },
-        0x9e => ifle { branch: r.next16().or(Err(()))? as i16 },
-        0x9f => if_icmpeq { branch: r.next16().or(Err(()))? as i16 },
-        0xa0 => if_icmpne { branch: r.next16().or(Err(()))? as i16 },
-        0xa1 => if_icmplt { branch: r.next16().or(Err(()))? as i16 },
-        0xa2 => if_icmpge { branch: r.next16().or(Err(()))? as i16 },
-        0xa3 => if_icmpgt { branch: r.next16().or(Err(()))? as i16 },
-        0xa4 => if_icmple { branch: r.next16().or(Err(()))? as i16 },
-        0xa5 => if_acmpeq { branch: r.next16().or(Err(()))? as i16 },
-        0xa6 => if_acmpne { branch: r.next16().or(Err(()))? as i16 },
-        0xa7 => goto { branch: r.next16().or(Err(()))? as i16 },
-        0xa8 => jsr { branch: r.next16().or(Err(()))? as i16 },
-        0xa9 => ret { index: r.next().or(Err(()))? },
+        0x99 => ifeq { branch: r.next16().ok()? as i16 },
+        0x9a => ifne { branch: r.next16().ok()? as i16 },
+        0x9b => iflt { branch: r.next16().ok()? as i16 },
+        0x9c => ifge { branch: r.next16().ok()? as i16 },
+        0x9d => ifgt { branch: r.next16().ok()? as i16 },
+        0x9e => ifle { branch: r.next16().ok()? as i16 },
+        0x9f => if_icmpeq { branch: r.next16().ok()? as i16 },
+        0xa0 => if_icmpne { branch: r.next16().ok()? as i16 },
+        0xa1 => if_icmplt { branch: r.next16().ok()? as i16 },
+        0xa2 => if_icmpge { branch: r.next16().ok()? as i16 },
+        0xa3 => if_icmpgt { branch: r.next16().ok()? as i16 },
+        0xa4 => if_icmple { branch: r.next16().ok()? as i16 },
+        0xa5 => if_acmpeq { branch: r.next16().ok()? as i16 },
+        0xa6 => if_acmpne { branch: r.next16().ok()? as i16 },
+        0xa7 => goto { branch: r.next16().ok()? as i16 },
+        0xa8 => jsr { branch: r.next16().ok()? as i16 },
+        0xa9 => ret { index: r.next8().ok()? },
         0xaa => {
-            while (r.dist() - method_start) % 4 != 0 { r.next().or(Err(()))?; }
-            let default = r.next32().or(Err(()))? as i32;
-            let low = r.next32().or(Err(()))? as i32;
-            let high = r.next32().or(Err(()))? as i32;
+            let padding = ((r.dist() - method_start) % 4) as u8;
+            for _ in 0..padding { r.next8().ok()?; }
+            let default = r.next32().ok()? as i32;
+            let low = r.next32().ok()? as i32;
+            let high = r.next32().ok()? as i32;
             let npairs = high - low + 1;
             let mut jump_offsets = Vec::new();
             for _ in 0..npairs {
-                jump_offsets.push(r.next32().or(Err(()))? as i32);
+                jump_offsets.push(r.next32().ok()? as i32);
             }
-            tableswitch { default, low, high, jump_offsets }
+            tableswitch { default, low, high, jump_offsets, padding }
         }
         0xab => {
-            while (r.dist() - method_start) % 4 != 0 { r.next().or(Err(()))?; }
-            let default = r.next32().or(Err(()))? as i32;
-            let npairs = r.next32().or(Err(()))? as i32;
+            let padding = ((r.dist() - method_start) % 4) as u8;
+            for _ in 0..padding { r.next8().ok()?; }
+            let default = r.next32().ok()? as i32;
+            let npairs = r.next32().ok()? as i32;
             let mut offsets = Vec::new();
             for _ in 0..npairs {
                 offsets.push(
-                    (r.next32().or(Err(()))? as i32,
-                     r.next32().or(Err(()))? as i32));
+                    (r.next32().ok()? as i32,
+                     r.next32().ok()? as i32));
             }
-            lookupswitch { default, match_offset_pairs: offsets }
+            lookupswitch { default, match_offset_pairs: offsets, padding }
         }
         0xac => ireturn,
         0xad => lreturn,
@@ -207,59 +209,58 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Result<Opcode, (
         0xaf => dreturn,
         0xb0 => areturn,
         0xb1 => return_,
-        0xb2 => getstatic { index: r.next16().or(Err(()))? },
-        0xb3 => putstatic { index: r.next16().or(Err(()))? },
-        0xb4 => getfield { index: r.next16().or(Err(()))? },
-        0xb5 => putfield { index: r.next16().or(Err(()))? },
-        0xb6 => invokevirtual { index: r.next16().or(Err(()))? },
-        0xb7 => invokespecial { index: r.next16().or(Err(()))? },
-        0xb8 => invokestatic { index: r.next16().or(Err(()))? },
+        0xb2 => getstatic { index: r.next16().ok()? },
+        0xb3 => putstatic { index: r.next16().ok()? },
+        0xb4 => getfield { index: r.next16().ok()? },
+        0xb5 => putfield { index: r.next16().ok()? },
+        0xb6 => invokevirtual { index: r.next16().ok()? },
+        0xb7 => invokespecial { index: r.next16().ok()? },
+        0xb8 => invokestatic { index: r.next16().ok()? },
         0xb9 => {
-            let ans = invokeinterface { index: r.next16().or(Err(()))?, count: r.next().or(Err(()))? };
-            r.next().or(Err(()))?;
+            let ans = invokeinterface { index: r.next16().ok()?, count: r.next8().ok()? };
+            r.next8().ok()?;
             ans
         }
         0xba => {
-            let ans = invokedynamic { index: r.next16().or(Err(()))? };
-            r.next().or(Err(()))?;
-            r.next().or(Err(()))?;
+            let ans = invokedynamic { index: r.next16().ok()? };
+            r.next8().ok()?;
+            r.next8().ok()?;
             ans
         }
-        0xbb => new { index: r.next16().or(Err(()))? },
-        0xbc => newarray { atype: r.next().or(Err(()))? },
-        0xbd => anewarray { index: r.next16().or(Err(()))? },
+        0xbb => new { index: r.next16().ok()? },
+        0xbc => newarray { atype: r.next8().ok()? },
+        0xbd => anewarray { index: r.next16().ok()? },
         0xbe => arraylength,
         0xbf => athrow,
-        0xc0 => checkcast { index: r.next16().or(Err(()))? },
-        0xc1 => instanceof { index: r.next16().or(Err(()))? },
+        0xc0 => checkcast { index: r.next16().ok()? },
+        0xc1 => instanceof { index: r.next16().ok()? },
         0xc2 => monitorenter,
         0xc3 => monitorexit,
         0xc4 => {
-            let opcode = r.next().or(Err(()))?;
+            let opcode = r.next8().ok()?;
             if opcode == 0x84 {
                 wide_iinc {
-                    index: r.next16().or(Err(()))?,
-                    const_: r.next16().or(Err(()))? as i16,
+                    index: r.next16().ok()?,
+                    const_: r.next16().ok()? as i16,
                 }
             } else {
                 wide {
                     opcode,
-                    index: r.next16().or(Err(()))?,
+                    index: r.next16().ok()?,
                 }
             }
         }
-        0xc5 => multianewarray { index: r.next16().or(Err(()))?, dimensions: r.next().or(Err(()))? },
-        0xc6 => ifnull { branch: r.next16().or(Err(()))? as i16 },
-        0xc7 => ifnonnull { branch: r.next16().or(Err(()))? as i16 },
-        0xc8 => goto_w { branch: r.next32().or(Err(()))? as i32 },
-        0xc9 => jsr_w { branch: r.next32().or(Err(()))? as i32 },
+        0xc5 => multianewarray { index: r.next16().ok()?, dimensions: r.next8().ok()? },
+        0xc6 => ifnull { branch: r.next16().ok()? as i16 },
+        0xc7 => ifnonnull { branch: r.next16().ok()? as i16 },
+        0xc8 => goto_w { branch: r.next32().ok()? as i32 },
+        0xc9 => jsr_w { branch: r.next32().ok()? as i32 },
         0xca => breakpoint,
-        0xcb...0xfd => reserved,
+        0xcb..=0xfd => reserved,
         0xfe => impdep1,
         0xff => impdep2,
-        _ => panic!("Unreachable code, wildcard case reached in exhaustive match!")
     };
-    Ok(ans)
+    Some(ans)
 }
 
 /// Converts an `Opcode` into bytes
@@ -555,7 +556,11 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             args.push(index);
             0xa9
         }
-        tableswitch { default, low, high, jump_offsets } => {
+        tableswitch { default, low, high, jump_offsets, padding } => {
+            #[allow(clippy::same_item_push)]
+            for _ in 0..padding {
+                args.push(0);
+            }
             args.push((default >> 24) as u8);
             args.push((default >> 16) as u8);
             args.push((default >> 8) as u8);
@@ -576,7 +581,11 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             }
             0xaa
         }
-        lookupswitch { default, match_offset_pairs } => {
+        lookupswitch { default, match_offset_pairs, padding } => {
+            #[allow(clippy::same_item_push)]
+            for _ in 0..padding {
+                args.push(0);
+            }
             args.push((default >> 24) as u8);
             args.push((default >> 16) as u8);
             args.push((default >> 8) as u8);

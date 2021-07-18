@@ -1,3 +1,4 @@
+#![allow(clippy::clippy::many_single_char_names)]
 use attributes::*;
 use attributes::Attribute::*;
 use bytecode_tools::*;
@@ -55,7 +56,7 @@ impl JavaClass {
         JavaClass {
             minor_version: 0,
             major_version: 0,
-            constant_pool: ConstantPool::new(),
+            constant_pool: ConstantPool::default(),
             access_flags: 0,
             this_class: 0,
             super_class: 0,
@@ -78,23 +79,13 @@ impl JavaClass {
         JavaClass::build(JavaClassReader::new_from_bytes(bytes)?)
     }
 
-    pub fn new_from_raw_bytes(bytes: *const u8, len: ::std::os::raw::c_long) -> io::Result<JavaClass> {
-        let mut buffer = Vec::with_capacity(len as usize);
-        unsafe {
-            for i in 0..(len as isize) {
-                buffer.push(*bytes.offset(i));
-            }
-        }
-        JavaClass::build(JavaClassReader::new_from_bytes(buffer)?)
-    }
-
     fn build(mut r: JavaClassReader) -> io::Result<JavaClass> {
         let magic = r.next32()?;
         if magic != 0xCAFEBABE { return malformed("Wrong magic number"); }
         let minor_version = r.next16()?;
         let major_version = r.next16()?;
         let cp_count = r.next16()?;
-        let cp = build_cp(r, cp_count);
+        let cp = build_cp(&mut r, cp_count)?;
 
         let access_flags = r.next16()?;
         let this_class = r.next16()?;
@@ -177,13 +168,13 @@ impl JavaClass {
 }
 
 /// Reads in the constant pool of a class
-fn build_cp(mut r: JavaClassReader, cp_count: u16) -> ConstantPool {
+fn build_cp(r: &mut JavaClassReader, cp_count: u16) -> io::Result<ConstantPool> {
     let mut cp_vec: Vec<CPInfo> = vec!();
     //we have to use an iterator so we can skip indices for Double and Long
     let mut iter = 0..cp_count - 1;
     while let Some(i) = iter.next() {
-        let tag = r.next()?;
-        if tag < 1 || tag > 18 || tag == 2 || tag == 13 || tag == 14 || tag == 17 {
+        let tag = r.next8()?;
+        if !(1..=18).contains(&tag) || tag == 2 || tag == 13 || tag == 14 || tag == 17 {
             return malformed("Invalid constant pool tag");
         }
         let x: CPInfo = match tag {
@@ -201,11 +192,11 @@ fn build_cp(mut r: JavaClassReader, cp_count: u16) -> ConstantPool {
                 let length = r.next16()?;
                 let mut bytes: Vec<u8> = vec!();
                 for j in 0..length {
-                    bytes.insert(j as usize, r.next()?);
+                    bytes.insert(j as usize, r.next8()?);
                 }
                 Utf8 { length, bytes }
             }
-            15 => MethodHandle { reference_kind: r.next()?, reference_index: r.next16()? },
+            15 => MethodHandle { reference_kind: r.next8()?, reference_index: r.next16()? },
             16 => MethodType { descriptor_index: r.next16()? },
             18 => InvokeDynamic { bootstrap_method_attr_index: r.next16()?, name_and_type_index: r.next16()? },
             _ => panic!("Unreachable code, wildcard case reached in exhaustive match") //unreachable
@@ -225,12 +216,12 @@ fn build_cp(mut r: JavaClassReader, cp_count: u16) -> ConstantPool {
             }
         };
     };
-    ConstantPool::new_with_info(cp_vec)
+    Ok(ConstantPool::new_with_info(cp_vec))
 }
 
 /// reads a String based on a list of bytes representing a Java-style modified UTF-8 list of bytes
 /// JVM specification §4.4.7
-pub fn read_string(bytes: &Vec<u8>) -> String {
+pub fn read_string(bytes: &[u8]) -> String {
     let mut chars = Vec::with_capacity(bytes.len());
     let mut index: usize = 0;
     while index < bytes.len() {
@@ -279,7 +270,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
                     let mut ans = Vec::with_capacity(code_len as usize);
                     let start = r.dist();
                     while r.dist() - start < code_len {
-                        ans.push(to_opcode(r, start).or(malformed("Invalid bytecode"))?);
+                        ans.push(to_opcode(r, start).ok_or_else(|| malformed_inner("Invalid bytecode"))?);
                     }
                     ans
                 },
@@ -305,10 +296,10 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
                     let num = r.next16()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
-                        let tag = r.next()?;
+                        let tag = r.next8()?;
                         ans.push(match tag {
-                            0...63 => StackMapFrame::SameFrame { offset_delta: tag },
-                            64...127 => StackMapFrame::SameLocals1Item {
+                            0..=63 => StackMapFrame::SameFrame { offset_delta: tag },
+                            64..=127 => StackMapFrame::SameLocals1Item {
                                 offset_delta: tag - 64,
                                 stack: read_verification_type_info(r)?,
                             },
@@ -316,14 +307,14 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
                                 offset_delta: r.next16()?,
                                 stack: read_verification_type_info(r)?,
                             },
-                            248...250 => StackMapFrame::ChopFrame {
+                            248..=250 => StackMapFrame::ChopFrame {
                                 absent_locals: 251 - tag,
                                 offset_delta: r.next16()?,
                             },
                             251 => StackMapFrame::SameFrameExtended {
                                 offset_delta: r.next16()?
                             },
-                            252...254 => StackMapFrame::AppendFrame {
+                            252..=254 => StackMapFrame::AppendFrame {
                                 offset_delta: r.next16()?,
                                 locals: {
                                     let mut ans = vec!();
@@ -396,7 +387,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
                 debug_extension: {
                     let mut ans = Vec::with_capacity(r.next16()? as usize);
                     for _i in 0..attribute_length {
-                        ans.push(r.next()?)
+                        ans.push(r.next8()?)
                     }
                     ans
                 }
@@ -455,7 +446,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
             },
             "RuntimeVisibleParameterAnnotations" => RuntimeVisibleParameterAnnotations {
                 parameter_annotations: {
-                    let num = r.next()?;
+                    let num = r.next8()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(read_annotations(r)?);
@@ -465,7 +456,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
             },
             "RuntimeInvisibleParameterAnnotations" => RuntimeInvisibleParameterAnnotations {
                 parameter_annotations: {
-                    let num = r.next()?;
+                    let num = r.next8()?;
                     let mut ans = Vec::with_capacity(num as usize);
                     for _i in 0..num {
                         ans.push(read_annotations(r)?);
@@ -531,13 +522,13 @@ fn read_type_annotations(r: &mut JavaClassReader) -> io::Result<Vec<TypeAnnotati
 }
 
 fn read_type_annotation(r: &mut JavaClassReader) -> io::Result<TypeAnnotation> {
-    let target_type = r.next()?;
+    let target_type = r.next8()?;
     let target_info = match target_type {
-        0x00 | 0x01 => TargetInfo::TypeParameterTarget { type_parameter_index: r.next()? },
+        0x00 | 0x01 => TargetInfo::TypeParameterTarget { type_parameter_index: r.next8()? },
         0x10 => TargetInfo::SupertypeTarget { supertype_index: r.next16()? },
-        0x11 | 0x12 => TargetInfo::TypeParameterBoundTarget { type_parameter_index: r.next()?, bound_index: r.next()? },
+        0x11 | 0x12 => TargetInfo::TypeParameterBoundTarget { type_parameter_index: r.next8()?, bound_index: r.next8()? },
         0x13 | 0x14 | 0x15 => TargetInfo::EmptyTarget,
-        0x16 => TargetInfo::FormalParameterTarget { formal_parameter_index: r.next()? },
+        0x16 => TargetInfo::FormalParameterTarget { formal_parameter_index: r.next8()? },
         0x17 => TargetInfo::ThrowsTarget { throws_type_index: r.next16()? },
         0x40 | 0x41 => TargetInfo::LocalVarTarget {
             table: {
@@ -555,17 +546,17 @@ fn read_type_annotation(r: &mut JavaClassReader) -> io::Result<TypeAnnotation> {
         },
         0x42 => TargetInfo::CatchTarget { exception_table_index: r.next16()? },
         0x43 | 0x44 | 0x45 | 0x46 => TargetInfo::OffsetTarget { offset: r.next16()? },
-        0x47 | 0x48 | 0x49 | 0x4A | 0x4B => TargetInfo::TypeArgumentTarget { offset: r.next16()?, type_argument_index: r.next()? },
+        0x47 | 0x48 | 0x49 | 0x4A | 0x4B => TargetInfo::TypeArgumentTarget { offset: r.next16()?, type_argument_index: r.next8()? },
         _ => return malformed("Bad target info tag")
     };
     let target_path = TypePath {
         path: {
-            let num = r.next()?;
+            let num = r.next8()?;
             let mut ans = Vec::with_capacity(num as usize);
             for _i in 0..num {
                 ans.push(TypePathEntry {
-                    type_path_kind: r.next()?,
-                    type_argument_index: r.next()?,
+                    type_path_kind: r.next8()?,
+                    type_argument_index: r.next8()?,
                 })
             }
             ans
@@ -614,7 +605,7 @@ fn read_annotation(r: &mut JavaClassReader) -> io::Result<Annotation> {
 }
 
 fn read_element_value(r: &mut JavaClassReader) -> io::Result<ElementValue> {
-    let tag = r.next()?;
+    let tag = r.next8()?;
     Ok(match tag as char {
         'B' | 'C' | 'D' | 'F' | 'I' | 'J' | 'S' | 'Z' | 's' => ElementValue::ConstValueIndex(r.next16()?),
         'e' => ElementValue::EnumConstValue {
@@ -636,7 +627,7 @@ fn read_element_value(r: &mut JavaClassReader) -> io::Result<ElementValue> {
 }
 
 fn read_verification_type_info(r: &mut JavaClassReader) -> io::Result<VerificationTypeInfo> {
-    let tag = r.next()?;
+    let tag = r.next8()?;
     Ok(match tag {
         0 => VerificationTypeInfo::Top,
         1 => VerificationTypeInfo::Integer,
@@ -653,6 +644,9 @@ fn read_verification_type_info(r: &mut JavaClassReader) -> io::Result<Verificati
 
 fn malformed<T>(err: &str) -> io::Result<T> {
     Err(io::Error::new(io::ErrorKind::InvalidData, format!("Malformed class file: {}", err)))
+}
+fn malformed_inner(err: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, format!("Malformed class file: {}", err))
 }
 
 /// an abstraction for reading bytes of a .class
@@ -680,7 +674,7 @@ impl JavaClassReader {
     fn new_from_bytes(bytes: Vec<u8>) -> io::Result<JavaClassReader> {
         Ok(JavaClassReader { buffer: bytes, dist: 0 })
     }
-    pub fn next(&mut self) -> io::Result<u8> {
+    pub fn next8(&mut self) -> io::Result<u8> {
         if self.dist as usize >= self.buffer.len() {
             return malformed("Reached eof early");
         }
@@ -689,10 +683,10 @@ impl JavaClassReader {
         Ok(ans)
     }
     pub fn next16(&mut self) -> io::Result<u16> {
-        Ok(build_u16!(self.next()?, self.next()?))
+        Ok(build_u16!(self.next8()?, self.next8()?))
     }
     pub fn next32(&mut self) -> io::Result<u32> {
-        Ok(build_u32!(self.next()?, self.next()?, self.next()?, self.next()?))
+        Ok(build_u32!(self.next8()?, self.next8()?, self.next8()?, self.next8()?))
     }
     pub fn next64(&mut self) -> io::Result<u64> {
         Ok(((self.next32()? as u64) << 32) | (self.next32()? as u64))

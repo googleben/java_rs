@@ -1,7 +1,6 @@
 use gdk_pixbuf::{Colorspace, Pixbuf};
 use gtk::*;
 use gtk;
-use gtk::prelude::*;
 use icon::ICON;
 use inner::class_to_tree;
 use java_class::class::JavaClass;
@@ -65,13 +64,11 @@ fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
     let notebook_clone = Rc::clone(&notebook);
     let last_dir = Rc::clone(&last_dir_base);
     open.connect_activate(move |_| {
-        use gtk::FileChooserDialog;
         let fchoose = FileChooserDialog::new::<Window>(Some("Open"), None, FileChooserAction::Open);
         let ldir2 = Rc::clone(&last_dir);
         let guard = ldir2.lock().unwrap();
-        match *guard {
-            Some(ref s) => { fchoose.set_current_folder_uri(s); }
-            None => {}
+        if let Some(ref s) = *guard { 
+            fchoose.set_current_folder_uri(s); 
         };
         drop(guard);
         let notebook = Rc::clone(&notebook_clone);
@@ -79,12 +76,9 @@ fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
         fchoose.connect_file_activated(move |x| {
             let file = x.get_filename();
             let folder = x.get_current_folder_uri();
-            match folder {
-                Some(folder) => {
-                    let mut p = last_dir.lock().unwrap();
-                    *p = Some(folder);
-                }
-                None => {}
+            if let Some(folder) = folder {
+                let mut p = last_dir.lock().unwrap();
+                *p = Some(folder);
             }
             x.close();
             match file {
@@ -111,7 +105,7 @@ fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
                         _ => "Class Pool index did not point to Utf8".to_owned()
                     };
                     scrollw.add(&class_to_tree(class));
-                    &notebook.create_tab(&name, scrollw);
+                    notebook.create_tab(&name, scrollw);
                 }
             }
         });

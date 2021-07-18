@@ -1,4 +1,3 @@
-use java_class::class;
 use java_class::class::JavaClass;
 use java_class::cp_info::CPInfo;
 use std::collections::HashMap;
@@ -8,10 +7,10 @@ use std::path::PathBuf;
 use std::str;
 use std::sync::{Arc, RwLock};
 use types;
-use types::Class;
+use types::{Class, ClassRef};
 use types::JavaType;
-use zip::read::ZipFile;
 use zip::ZipArchive;
+use threads::*;
 
 static mut JVM_INSTANCE: *const Arc<RwLock<JVM>> = 0 as *const Arc<RwLock<JVM>>;
 
@@ -19,7 +18,7 @@ const MAJOR_VERSION: u16 = 52;
 const MINOR_VERSION: u16 = 0;
 
 /// returns a "safe" reference to the static JVM
-fn jvm<'a>() -> Arc<RwLock<JVM>> {
+fn jvm() -> Arc<RwLock<JVM>> {
     unsafe {
         (*JVM_INSTANCE).clone()
     }
@@ -29,16 +28,18 @@ fn jvm<'a>() -> Arc<RwLock<JVM>> {
 struct JVM {
     pub jars: Vec<ZipArchive<File>>,
     pub classpath: Box<[String]>,
-    pub classes: HashMap<String, Arc<RwLock<Class>>>,
+    pub classes: HashMap<String, ClassRef>,
     pub to_load: Vec<String>,
-    pub to_init: Vec<(Arc<RwLock<Class>>, Arc<Box<JavaClass>>)>,
+    pub to_init: Vec<(ClassRef, Arc<Box<JavaClass>>)>,
+    pub objects: Vec<Arc<RwLock<JavaType>>>,
+    pub interned_strings: Vec<(String, JavaType)>
 }
 
 /// starts the JVM
 /// # parametersClass
 /// * classpath: a list of folders or jar files to search for runtime classes
 /// * entry: the class containing the main function/entry point to execute
-pub fn start(classpath: Box<[String]>, entry_point: &String) {
+pub fn start(classpath: Box<[String]>, entry_point: &str) {
     info!("Starting JVM");
     debug!("Start");
     let mut jars = vec!();
@@ -48,50 +49,66 @@ pub fn start(classpath: Box<[String]>, entry_point: &String) {
     let jvm = JVM {
         jars,
         classpath,
-        classes: HashMap::<String, Arc<RwLock<Class>>>::new(),
+        classes: HashMap::<String, ClassRef>::new(),
         to_load: Vec::new(),
         to_init: Vec::new(),
+        objects: Vec::new(),
+        interned_strings: Vec::new()
     };
     unsafe {
         JVM_INSTANCE = ::std::mem::transmute(Box::new(Arc::new(RwLock::new(jvm))));
     }
+    if let Some(entry_class) = load_class(entry_point) {
+        if let Some(main) = entry_class.methods.get("main:([:java/lang/String;)V") {
+            let args = vec![JavaType::Null];
+            let _main_thread = JvmThread::with_args(main, args);
+        }
+    }
+}
+
+pub fn create_array(member_class: ClassRef, len: usize) -> JavaType {
+    let member_class_name = &member_class.name;
+    let class_name = "[".to_owned()+member_class_name;
+    let class = get_class(&class_name).unwrap();
+    let data = vec![member_class.get_default_value(); len].into_boxed_slice();
+    let arr = JavaType::Array {class, data};
+    let val = Arc::new(RwLock::new(arr));
+    add_to_gc(val.clone());
+    JavaType::Reference {class, val}
 }
 
 /// returns the reference to a class if it has been loaded
-pub fn get_class(name: &String) -> Option<Arc<RwLock<Class>>> {
+pub fn get_class(name: &str) -> Option<ClassRef> {
     let jvm = jvm();
     let jvm = jvm.read().unwrap();
     match jvm.classes.get(name) {
-        Some(arc) => Some(arc.clone()),
+        Some(arc) => Some(arc),
         None => None
     }
 }
 
-fn find_class_jar(name: &String) -> Option<Vec<u8>> {
+fn find_class_jar(name: &str) -> Option<Vec<u8>> {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
-    for mut jar in &mut jvm.jars {
-        let x = jar.by_name(&(name.to_string() + ".class"));
+    for jar in &mut jvm.jars {
+        let x = jar.by_name(&(name.to_string()+".class"));
         let mut file = match x {
             Ok(s) => s,
             Err(_) => continue
         };
         let mut ans = vec!();
         use std::io::Read;
-        match file.read_to_end(&mut ans) {
-            Err(a) => {
-                error!("Error reading from jar: {:?}", a);
-                return None;
-            }
-            Ok(_) => {}
-        };
-        return Some(ans);
+        if let Err(a) = file.read_to_end(&mut ans) {
+            error!("Error reading from jar: {:?}", a);
+            return None;
+        }
+        return Some(ans)
     }
     None
 }
 
 /// returns the path to a .class file of a given class, if it exists and is in the classpath
-fn find_class(name: &String) -> Option<PathBuf> {
+fn find_class(name: &str) -> Option<PathBuf> {
     let mut parts = Vec::new();
     name.split('/').for_each(|s| parts.push(s.to_owned()));
     let l = parts.len();
@@ -112,23 +129,23 @@ fn find_class(name: &String) -> Option<PathBuf> {
 }
 
 /// returns true if the bootstrap classloader has already loaded the class
-pub fn is_class_loaded(name: &String) -> bool {
+pub fn is_class_loaded(name: &str) -> bool {
     let jvm = jvm();
     let jvm = jvm.read().unwrap();
     jvm.classes.contains_key(name)
 }
 
 /// If the class is defined, return it, otherwise attempt to load it
-pub fn get_or_load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
+pub fn get_or_load_class(name: &str) -> Option<ClassRef> {
     //if the class is already defined return it
     if is_class_loaded(name) {
-        return Ok(get_class(name).unwrap()); //OK to unwrap since is_class_loaded guarantees existance
+        return Some(get_class(name).unwrap()); //OK to unwrap since is_class_loaded guarantees existance
     }
     //otherwise, attempt to load it
     load_class(name)
 }
 
-pub fn add_to_load(name: &String) {
+pub fn add_to_load(name: &str) {
     if !is_class_loaded(name) {
         let jvm = jvm();
         let mut jvm = jvm.write().unwrap();
@@ -182,14 +199,14 @@ fn get_to_load() -> String {
     jvm.to_load.remove(0)
 }
 
-fn get_to_init() -> (Arc<RwLock<Class>>, Arc<Box<JavaClass>>) {
+fn get_to_init() -> (ClassRef, Arc<Box<JavaClass>>) {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
     let i = jvm.to_init.len() - 1;
     jvm.to_init.remove(i)
 }
 
-fn load_while() -> Result<(), ()> {
+fn load_while() -> Option<()> {
     while has_to_load() {
         let to_l = get_to_load();
         if is_class_loaded(&to_l) {
@@ -199,11 +216,13 @@ fn load_while() -> Result<(), ()> {
         load_class_2(&to_l)?;
         debug!("Done loading class {}", to_l);
     }
-    Ok(())
+    Some(())
 }
 
 //TODO: On error return Err(Throwable) JVM Specification §5.3.5
-pub fn load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
+//TODO: Completely separate classloading to loading and intializing
+//TODO: Pause all active threads if loading a class after initial startup
+pub fn load_class(name: &str) -> Option<ClassRef> {
     let ans = load_class_2(name);
     debug!("Loaded {}, intializing stuff", name);
 
@@ -212,13 +231,18 @@ pub fn load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
         if has_to_init() {
             debug!("Found class to initialize");
             let cx = get_to_init();
-            let mut c = cx.0.write().unwrap();
-            let mut name_2 = "Unknown class name".to_string();
-            if cx.1.constant_pool.len() > 1 {
-                name_2 = get_name_cp(&cx.1.constant_pool, cx.1.this_class);
-            }
+
+            let name_2 = if cx.1.constant_pool.len() > 1 {
+                get_name_cp(&cx.1.constant_pool, cx.1.this_class)
+            } else {
+                "Unknown class name".to_string()
+            };
             debug!("Initializing {}", name_2);
-            c.initialize(&cx.1)?;
+            unsafe {
+                let c = std::mem::transmute::<ClassRef, *mut Class>(cx.0);
+                (&mut *c).initialize(&cx.1, cx.0)?;
+            }
+            
             debug!("Done initializing {}", name_2);
         }
     }
@@ -226,14 +250,14 @@ pub fn load_class(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
     ans
 }
 
-fn add_to_init(class: Arc<RwLock<Class>>, jc: Box<JavaClass>) {
+fn add_to_init(class: ClassRef, jc: Box<JavaClass>) {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
     jvm.to_init.push((class, Arc::new(jc)));
 }
 
 /// Load a class using the bootstrap classloader
-fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
+fn load_class_2(name: &str) -> Option<ClassRef> {
     //if the class is a primitive or an array, special case load
 
     let mut chars = name.chars();
@@ -252,10 +276,10 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
                 'Z' => "boolean",
                 _ => panic!() //unreachable
             }.to_owned();
-            let class = Arc::new(RwLock::new(Class {
+            let class = Class {
                 major_version: MAJOR_VERSION,
                 minor_version: MINOR_VERSION,
-                constant_pool: types::SymbolicConstantPool::new_empty(),
+                constant_pool: types::RuntimeConstantPool::new_empty(),
                 access_flags: 0,
                 name: name.to_owned(),
                 super_class: None,
@@ -264,11 +288,13 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
                 instance_fields: vec!(),
                 methods: HashMap::new(),
                 attributes: vec!(),
-            }));
+                array_inner: None
+            };
             let jvm = jvm();
             let mut jvm = jvm.write().unwrap();
-            jvm.classes.insert(name.to_owned(), class.clone());
-            return Ok(class);
+            let class: ClassRef = Box::leak(Box::new(class));
+            jvm.classes.insert(name, class);
+            return Some(class);
         }
         '[' => {
             let mut sub_name = chars.as_str().to_string();
@@ -276,10 +302,10 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
                 let x = sub_name[1..sub_name.len() - 1].to_owned();
                 sub_name = x;
             }
-            let class = Arc::new(RwLock::new(Class {
+            let class = Class {
                 major_version: MAJOR_VERSION,
                 minor_version: MINOR_VERSION,
-                constant_pool: types::SymbolicConstantPool::new_empty(),
+                constant_pool: types::RuntimeConstantPool::new_empty(),
                 access_flags: 0,
                 name: name.to_owned(),
                 super_class: Some(get_or_load_class(&"java/lang/Object".to_string())?),
@@ -288,18 +314,20 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
                 instance_fields: vec!(),
                 methods: HashMap::new(),
                 attributes: vec!(),
-            }));
+                array_inner: None
+            };
             let jvm = jvm();
             let mut jvm = jvm.write().unwrap();
-            jvm.classes.insert(name.to_owned(), class.clone());
+            let class: ClassRef = Box::leak(Box::new(class));
+            jvm.classes.insert(name.to_string(), class);
             drop(jvm);
             if &sub_name[..1] == "[" {
                 load_class_2(&sub_name)?;
             } else {
                 add_to_load(&sub_name);
             }
-            add_to_init(class.clone(), Box::new(JavaClass::empty()));
-            return Ok(class);
+            add_to_init(class, Box::new(JavaClass::empty()));
+            return Some(class);
         }
         _ => {}
     };
@@ -307,13 +335,13 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
 
     //load the .class into a static representation
     debug!("Trying to load class {}", name);
-    let class = match find_class_jar(&name) {
+    let jc = match find_class_jar(&name) {
         Some(bytes) => {
             match JavaClass::new_from_bytes(bytes) {
                 Ok(c) => c,
                 Err(a) => {
                     error!("Class could not be loaded from zip: {:?}", a);
-                    return Err(());
+                    return None;
                 }
             }
         }
@@ -321,44 +349,73 @@ fn load_class_2(name: &String) -> Result<Arc<RwLock<Class>>, ()> {
             match find_class(&name) {
                 Some(p) => match JavaClass::new(p.to_str().unwrap()) {
                     Ok(c) => c,
-                    Err(_) => return Err(())
+                    Err(_) => return None
                 },
                 None => {
                     error!("Class could not be found");
-                    return Err(());
+                    return None;
                 }
             }
         }
     };
-    let class = Box::new(class);
+    let jc = Box::new(jc);
     debug!("Loaded .class file");
     //load superinterfaces and superclasses
     //if the class is not java.lang.Object, attempt to load its superclass
     if name != "java/lang/Object" {
-        let super_class_index = class.super_class;
-        let super_class_name = get_name(&class, &class.constant_pool[super_class_index]);
+        let super_class_index = jc.super_class;
+        let super_class_name = get_name(&jc, &jc.constant_pool[super_class_index]);
         //a class may not be its own superclass
-        if &super_class_name == name {
-            return Err(());
+        if super_class_name==name {
+            return None;
         }
         //superclasses may not be interfaces
     }
-    for interface_index in &class.interfaces {
-        let interface_name = get_name(&class, &class.constant_pool[*interface_index]);
+    for interface_index in &jc.interfaces {
+        let interface_name = get_name(&jc, &jc.constant_pool[*interface_index]);
         //an interface may not be its own superinterface
-        if &interface_name == name {
-            return Err(());
+        if interface_name==name {
+            return None;
         }
     }
     debug!("Making Class struct");
-    let jc = Class::new();
-    jc.initialize_start(&class)?;
-    let arc = Arc::new(RwLock::new(jc));
+    let class = Class::default();
+    class.initialize_start(&jc)?;
+    
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
-    jvm.classes.insert(name.to_string(), arc.clone());
+    let class: ClassRef = Box::leak(Box::new(class));
+    jvm.classes.insert(name.to_string(), class);
     drop(jvm);
-    let c = arc.clone();
-    add_to_init(c, class);
-    Ok(arc)
+    add_to_init(class, jc);
+    Some(class)
+}
+
+/// Registers an object with the garbage collector
+pub fn add_to_gc(obj: Arc<RwLock<JavaType>>) {
+    let jvm = jvm();
+    let mut jvm = jvm.write().unwrap();
+    jvm.objects.push(obj);
+}
+
+pub fn get_or_intern_string(str: String) -> JavaType {
+    {
+        let jvm = jvm();
+        let jvm = jvm.read().unwrap();
+        for (s, ans) in &jvm.interned_strings {
+            if s == &str {
+                return ans.clone();
+            }
+        }
+    }
+    let string_class = get_or_load_class("java/lang/String").unwrap();
+    let obj = string_class.instantiate_no_gc();
+    let encoded: Vec<u16> = str.encode_utf16().collect();
+    let char_class = get_or_load_class("C").unwrap();
+    let arr = create_array(char_class, encoded.len());
+    for (i, &c) in encoded.iter().enumerate() {
+        arr.array_set(i, JavaType::Char(c));
+    }
+    obj.set_field("value", arr);
+    obj
 }

@@ -1,6 +1,5 @@
 use cp_info::CPInfo;
 use std::ops::Index;
-use std::string;
 
 /// A struct representing the constant pool of a class file.
 /// 1-indexed (to emulate the Java constant pool)
@@ -9,12 +8,14 @@ pub struct ConstantPool {
     cp: Vec<CPInfo>
 }
 
-impl ConstantPool {
+impl Default for ConstantPool {
     /// Creates a new empty `ConstantPool`
-    pub fn new() -> ConstantPool {
+    fn default() -> ConstantPool {
         ConstantPool { cp: Vec::new() }
     }
+}
 
+impl ConstantPool {
     /// Creates a new `ConstantPool` using existing `CPInfo`
     /// 
     /// # Arguments
@@ -27,6 +28,10 @@ impl ConstantPool {
     /// Returns the 1-indexed length of the constant pool
     pub fn len(&self) -> u16 {
         self.cp.len() as u16 + 1
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cp.is_empty()
     }
 
     /// Returns a reference to the `Vec` containing the constants
