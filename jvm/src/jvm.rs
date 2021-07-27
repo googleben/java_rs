@@ -32,7 +32,9 @@ struct JVM {
     pub to_load: Vec<String>,
     pub to_init: Vec<(ClassRef, Arc<Box<JavaClass>>)>,
     pub objects: Vec<Arc<RwLock<JavaType>>>,
-    pub interned_strings: Vec<(String, JavaType)>
+    pub interned_strings: Vec<(String, JavaType)>,
+    ///true if a class is currently being initialized
+    pub is_in_init_loop: bool
 }
 
 /// starts the JVM
@@ -43,8 +45,11 @@ pub fn start(classpath: Box<[String]>, entry_point: &str) {
     info!("Starting JVM");
     debug!("Start");
     let mut jars = vec!();
-    jars.push(ZipArchive::new(File::open(::std::env::var("JAVA_HOME").unwrap() + "/jre/lib/rt.jar").unwrap()).unwrap());
-    jars.push(ZipArchive::new(File::open(::std::env::var("JAVA_HOME").unwrap() + "/jre/lib/jce.jar").unwrap()).unwrap());
+    let java_path = r#"C:\Program Files\Java\jdk1.8.0_201"#;
+    jars.push(ZipArchive::new(File::open(java_path.to_owned() + "/jre/lib/rt.jar").unwrap()).unwrap());
+    jars.push(ZipArchive::new(File::open(java_path.to_owned() + "/jre/lib/jce.jar").unwrap()).unwrap());
+    // jars.push(ZipArchive::new(File::open(::std::env::var("JAVA_HOME").unwrap() + "/jre/lib/rt.jar").unwrap()).unwrap());
+    // jars.push(ZipArchive::new(File::open(::std::env::var("JAVA_HOME").unwrap() + "/jre/lib/jce.jar").unwrap()).unwrap());
     //let stdlib = ZipArchive::new(File::open(::std::env::var("JAVA_HOME").unwrap()+"/jre/lib/rt.jar").unwrap()).unwrap();
     let jvm = JVM {
         jars,
@@ -53,7 +58,8 @@ pub fn start(classpath: Box<[String]>, entry_point: &str) {
         to_load: Vec::new(),
         to_init: Vec::new(),
         objects: Vec::new(),
-        interned_strings: Vec::new()
+        interned_strings: Vec::new(),
+        is_in_init_loop: false
     };
     unsafe {
         JVM_INSTANCE = ::std::mem::transmute(Box::new(Arc::new(RwLock::new(jvm))));
@@ -69,7 +75,7 @@ pub fn start(classpath: Box<[String]>, entry_point: &str) {
 pub fn create_array(member_class: ClassRef, len: usize) -> JavaType {
     let member_class_name = &member_class.name;
     let class_name = "[".to_owned()+member_class_name;
-    let class = get_class(&class_name).unwrap();
+    let class = get_or_load_class(&class_name).unwrap();
     let data = vec![member_class.get_default_value(); len].into_boxed_slice();
     let arr = JavaType::Array {class, data};
     let val = Arc::new(RwLock::new(arr));
@@ -206,6 +212,18 @@ fn get_to_init() -> (ClassRef, Arc<Box<JavaClass>>) {
     jvm.to_init.remove(i)
 }
 
+fn is_in_init_loop() -> bool {
+    let jvm = jvm();
+    let jvm = jvm.read().unwrap();
+    jvm.is_in_init_loop
+}
+
+fn set_in_init_loop(val: bool) {
+    let jvm = jvm();
+    let mut jvm = jvm.write().unwrap();
+    jvm.is_in_init_loop = val;
+}
+
 fn load_while() -> Option<()> {
     while has_to_load() {
         let to_l = get_to_load();
@@ -224,7 +242,17 @@ fn load_while() -> Option<()> {
 //TODO: Pause all active threads if loading a class after initial startup
 pub fn load_class(name: &str) -> Option<ClassRef> {
     let ans = load_class_2(name);
-    debug!("Loaded {}, intializing stuff", name);
+    if is_in_init_loop() {
+        trace!("Init loop already running, returning early from load_class");
+        return ans;
+    }
+    if has_to_init() || has_to_load() {
+        debug!("Beginning initialization loop after loading {}", name);
+        set_in_init_loop(true);
+    } else {
+        debug!("Loaded {} and there are no classes to initialize", name);
+    }
+    
 
     while has_to_init() || has_to_load() {
         load_while()?;
@@ -246,6 +274,7 @@ pub fn load_class(name: &str) -> Option<ClassRef> {
             debug!("Done initializing {}", name_2);
         }
     }
+    set_in_init_loop(false);
     debug!("No more classes to initialize");
     ans
 }
@@ -265,23 +294,24 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
     match c {
         'B' | 'C' | 'D' | 'F' |
         'I' | 'J' | 'S' | 'Z' => {
-            let name = match c {
-                'B' => "byte",
-                'C' => "char",
-                'D' => "double",
-                'F' => "float",
-                'I' => "int",
-                'J' => "long",
-                'S' => "short",
-                'Z' => "boolean",
-                _ => panic!() //unreachable
-            }.to_owned();
+            // let name = match c {
+            //     'B' => "byte",
+            //     'C' => "char",
+            //     'D' => "double",
+            //     'F' => "float",
+            //     'I' => "int",
+            //     'J' => "long",
+            //     'S' => "short",
+            //     'Z' => "boolean",
+            //     _ => panic!() //unreachable
+            // }.to_owned();
+            let name = format!("{}", c);
             let class = Class {
                 major_version: MAJOR_VERSION,
                 minor_version: MINOR_VERSION,
                 constant_pool: types::RuntimeConstantPool::new_empty(),
                 access_flags: 0,
-                name: name.to_owned(),
+                name,
                 super_class: None,
                 interfaces: vec!(),
                 fields: HashMap::new(),
@@ -293,7 +323,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
             let jvm = jvm();
             let mut jvm = jvm.write().unwrap();
             let class: ClassRef = Box::leak(Box::new(class));
-            jvm.classes.insert(name, class);
+            jvm.classes.insert(format!("{}", c), class);
             return Some(class);
         }
         '[' => {
@@ -340,7 +370,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
             match JavaClass::new_from_bytes(bytes) {
                 Ok(c) => c,
                 Err(a) => {
-                    error!("Class could not be loaded from zip: {:?}", a);
+                    error!("Class {} could not be loaded from zip: {:?}", name, a);
                     return None;
                 }
             }
@@ -353,6 +383,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
                 },
                 None => {
                     error!("Class could not be found");
+                    panic!();
                     return None;
                 }
             }

@@ -1,3 +1,7 @@
+use std::env;
+
+use env_logger::Env;
+
 extern crate env_logger;
 /// # Explanation of "binary" names:
 /// In the JVM, a "binary" name is a type's name as it appears in a .class file.
@@ -25,7 +29,9 @@ pub mod jvm;
 pub mod threads;
 
 fn main() {
-    env_logger::init();
+    //env_logger::init();
+    ::env::set_var("RUST_BACKTRACE", "1");
+    env_logger::Builder::from_env(Env::default().default_filter_or("trace")).init();
     let cp = Box::new([".".to_owned()]);
     jvm::start(cp, &"Tester".to_owned());
     //println!("{:?}", jvm::load_class(&"Tester".to_owned()));

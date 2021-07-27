@@ -178,7 +178,8 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Option<Opcode> {
         0xa8 => jsr { branch: r.next16().ok()? as i16 },
         0xa9 => ret { index: r.next8().ok()? },
         0xaa => {
-            let padding = ((r.dist() - method_start) % 4) as u8;
+            let padding = 4 - ((r.dist() - method_start) % 4) as u8;
+            let padding = if padding == 4 {0} else {padding};
             for _ in 0..padding { r.next8().ok()?; }
             let default = r.next32().ok()? as i32;
             let low = r.next32().ok()? as i32;
@@ -191,7 +192,8 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Option<Opcode> {
             tableswitch { default, low, high, jump_offsets, padding }
         }
         0xab => {
-            let padding = ((r.dist() - method_start) % 4) as u8;
+            let padding = 4 - ((r.dist() - method_start) % 4) as u8;
+            let padding = if padding == 4 {0} else {padding};
             for _ in 0..padding { r.next8().ok()?; }
             let default = r.next32().ok()? as i32;
             let npairs = r.next32().ok()? as i32;

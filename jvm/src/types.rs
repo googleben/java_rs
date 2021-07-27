@@ -538,11 +538,16 @@ impl PartialEq for Class {
     }
 }
 
-fn parse_type(start: char, chars: &mut ::std::str::Chars) -> String {
+fn parse_type(name: &str) -> String {
+    let mut cs = name.chars();
+    parse_type_started(cs.next().unwrap(), &mut cs)
+}
+
+fn parse_type_started(start: char, chars: &mut ::std::str::Chars) -> String {
     let mut ans = String::new();
     if start == '[' {
         ans.push('[');
-        ans += &parse_type(chars.next().unwrap(), chars);
+        ans += &parse_type_started(chars.next().unwrap(), chars);
         ans
     } else if start == 'L' {
         loop {
@@ -568,9 +573,9 @@ pub fn parse_parameters_return(signature: &str) -> (Vec<String>, String) {
         if c == ')' {
             break;
         }
-        ans.push(parse_type(c, &mut chars));
+        ans.push(parse_type_started(c, &mut chars));
     }
-    (ans, parse_type(chars.next().unwrap(), &mut chars))
+    (ans, parse_type_started(chars.next().unwrap(), &mut chars))
 }
 
 /// constant pool using references to runtime JVM information
@@ -601,7 +606,7 @@ impl RuntimeConstantPool {
                         _ => panic!()
                     };
                     let class = jvm::get_or_load_class(&class_name)?;
-                    RuntimeConstantPoolEntry::Fieldref { class, name, type_: jvm::get_or_load_class(&type_)? }
+                    RuntimeConstantPoolEntry::Fieldref { class, name, type_: jvm::get_or_load_class(&parse_type(&type_))? }
                 }
                 CPInfo::Methodref { class_index, name_and_type_index } => {
                     let class_name = jvm::get_name_cp(cp, *class_index);
@@ -711,9 +716,9 @@ impl Field {
         let descriptor_raw = jvm::get_name(class, &class.constant_pool[field_info.descriptor_index]);
         let d_r_2 = descriptor_raw.to_owned();
         let mut descriptor_chars = d_r_2.chars();
-        let descriptor = parse_type(descriptor_chars.next().unwrap(), &mut descriptor_chars);
+        let descriptor = parse_type_started(descriptor_chars.next().unwrap(), &mut descriptor_chars);
         let attributes = field_info.attributes.clone();
-        let class = jvm::get_class(&descriptor_raw).unwrap();
+        let class = jvm::get_or_load_class(&descriptor).unwrap();
         let value = Arc::new(RwLock::new(class.get_default_value()));
         Field { class, access_flags, name, descriptor_raw, descriptor, attributes, value }
     }
@@ -756,9 +761,9 @@ impl InstanceFieldInfo {
         let descriptor_raw = jvm::get_name(class, &class.constant_pool[field_info.descriptor_index]);
         let d_r_2 = descriptor_raw.to_owned();
         let mut descriptor_chars = d_r_2.chars();
-        let descriptor = parse_type(descriptor_chars.next().unwrap(), &mut descriptor_chars);
+        let descriptor = parse_type_started(descriptor_chars.next().unwrap(), &mut descriptor_chars);
         let attributes = field_info.attributes.clone();
-        let class = jvm::get_class(&descriptor_raw).unwrap();
+        let class = jvm::get_or_load_class(&parse_type(&descriptor_raw)).unwrap();
         InstanceFieldInfo { class, access_flags, name, descriptor_raw, descriptor, attributes }
     }
 }
