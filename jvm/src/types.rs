@@ -6,14 +6,34 @@ use java_class::fields::FieldInfo;
 use java_class::methods::MethodInfo;
 use jvm;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Index;
 use std::sync::Arc;
+use std::sync::Condvar;
+use std::sync::Mutex;
 use std::sync::RwLock;
+use std::thread::ThreadId;
 use types::JavaType::*;
 
 pub type ClassRef = &'static Class;
+
+pub enum ClassInitStatus {
+    Initialized,
+    Initializing(ThreadId, Arc<Condvar>),
+    Uninitialized
+}
+
+impl Debug for ClassInitStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            ClassInitStatus::Initialized => "Initialized",
+            ClassInitStatus::Initializing(_, _) => "Initializing",
+            ClassInitStatus::Uninitialized => "Uninitialized"
+        })
+    }
+}
 
 /// wrapper for java_class::class::JavaClass that includes runtime data
 #[derive(Debug)]
@@ -31,7 +51,9 @@ pub struct Class {
     pub instance_fields: Vec<InstanceFieldInfo>,
     pub methods: HashMap<String, &'static Method>,
     pub attributes: Vec<Attribute>,
-    pub array_inner: Option<ClassRef>
+    pub array_inner: Option<ClassRef>,
+    /// whether the <clinit> method has been called for this type
+    pub is_initialized: Mutex<ClassInitStatus>,
 }
 
 impl Default for Class {
@@ -48,7 +70,8 @@ impl Default for Class {
             instance_fields: vec!(),
             methods: HashMap::new(),
             attributes: vec!(),
-            array_inner: None
+            array_inner: None,
+            is_initialized: Mutex::new(ClassInitStatus::Uninitialized)
         }
     }
 }
@@ -503,8 +526,8 @@ impl Class {
         let mut curr = self;
         loop {
             for f in &self.instance_fields {
-                if !fields.contains_key(&f.name) {
-                    fields.insert(f.name.clone(), f.class.get_default_value());
+                if !fields.contains_key(f.name) {
+                    fields.insert(f.name.to_owned(), f.class.get_default_value());
                 }
             }
             if let Some(c) = curr.super_class {
@@ -735,6 +758,14 @@ impl Field {
             value,
         }
     }
+
+    pub fn is_static(&self) -> bool {
+        self.access_flags & java_class::fields::AccessFlags::Static as u16 != 0
+    }
+
+    pub fn is_final(&self) -> bool {
+        self.access_flags & java_class::fields::AccessFlags::Final as u16 != 0
+    }
 }
 
 /// used as a holder for information needed to create instances of classes
@@ -743,11 +774,11 @@ pub struct InstanceFieldInfo {
     /// the access flags of the field
     pub access_flags: u16,
     /// the name of the field
-    pub name: String,
+    pub name: &'static str,
     /// the descriptor of the field in stripped ('L'-';' removed) binary representation
-    pub descriptor: String,
+    pub descriptor: &'static str,
     /// the descriptor in binary format
-    pub descriptor_raw: String,
+    pub descriptor_raw: &'static str,
     /// the type of the field
     pub class: ClassRef,
     /// the attributes of the field
@@ -757,11 +788,11 @@ pub struct InstanceFieldInfo {
 impl InstanceFieldInfo {
     fn new(class: &JavaClass, field_info: &FieldInfo) -> InstanceFieldInfo {
         let access_flags = field_info.access_flags;
-        let name = jvm::get_name(class, &class.constant_pool[field_info.name_index]);
-        let descriptor_raw = jvm::get_name(class, &class.constant_pool[field_info.descriptor_index]);
+        let name = Box::leak(jvm::get_name(class, &class.constant_pool[field_info.name_index]).into_boxed_str());
+        let descriptor_raw = Box::leak(jvm::get_name(class, &class.constant_pool[field_info.descriptor_index]).into_boxed_str());
         let d_r_2 = descriptor_raw.to_owned();
         let mut descriptor_chars = d_r_2.chars();
-        let descriptor = parse_type_started(descriptor_chars.next().unwrap(), &mut descriptor_chars);
+        let descriptor = Box::leak(parse_type_started(descriptor_chars.next().unwrap(), &mut descriptor_chars).into_boxed_str());
         let attributes = field_info.attributes.clone();
         let class = jvm::get_or_load_class(&parse_type(&descriptor_raw)).unwrap();
         InstanceFieldInfo { class, access_flags, name, descriptor_raw, descriptor, attributes }
@@ -818,6 +849,8 @@ pub struct Method {
     /// guaranteed to be Some if this method is not native or abstract
     pub code: Option<MethodCode>,
 
+    pub native_fn: Option<RwLock<*mut std::ffi::c_void>>,
+
     pub signature: (), //TODO
     pub visible_annotations: (), //TODO
     pub invisible_annotations: () //TODO
@@ -846,7 +879,12 @@ impl Method {
                 }
             })
         };
-        Some(Method { class, name, descriptor, repr, parameters, return_type, access_flags, attributes, code, signature: (), visible_annotations: (), invisible_annotations: () })
+        let native_fn = if method_info.is_abstract() {
+            Some(RwLock::new(std::ptr::null_mut::<std::ffi::c_void>()))
+        } else {
+            None
+        };
+        Some(Method { class, name, descriptor, repr, parameters, return_type, access_flags, attributes, code, native_fn, signature: (), visible_annotations: (), invisible_annotations: () })
     }
     pub fn is_abstract(&self) -> bool {
         self.access_flags & java_class::methods::AccessFlags::Abstract as u16 != 0
@@ -868,7 +906,7 @@ impl Method {
 #[derive(Debug)]
 pub enum JavaType {
     Boolean(bool),
-    Byte(u8),
+    Byte(i8),
     Short(i16),
     Char(u16),
     Int(i32),
@@ -884,6 +922,7 @@ pub enum JavaType {
 impl Clone for JavaType {
     fn clone(&self) -> Self {
         match self {
+            Boolean(val) => Boolean(*val),
             Byte(val) => Byte(*val),
             Short(val) => Short(*val),
             Char(val) => Char(*val),
@@ -898,9 +937,192 @@ impl Clone for JavaType {
     }
 }
 
+pub trait Unwrap<T> {
+    fn unwrap(&self) -> T;
+}
+
+impl Unwrap<bool> for &JavaType {
+    fn unwrap(&self) -> bool {
+        self.unwrap_boolean()
+    }
+}
+impl Unwrap<i8> for &JavaType {
+    fn unwrap(&self) -> i8 {
+        self.unwrap_byte()
+    }
+}
+impl Unwrap<i16> for &JavaType {
+    fn unwrap(&self) -> i16 {
+        self.unwrap_short()
+    }
+}
+impl Unwrap<u16> for &JavaType {
+    fn unwrap(&self) -> u16 {
+        self.unwrap_char()
+    }
+}
+impl Unwrap<i32> for &JavaType {
+    fn unwrap(&self) -> i32 {
+        self.unwrap_int()
+    }
+}
+impl Unwrap<f32> for &JavaType {
+    fn unwrap(&self) -> f32 {
+        self.unwrap_float()
+    }
+}
+impl Unwrap<i64> for &JavaType {
+    fn unwrap(&self) -> i64 {
+        self.unwrap_long()
+    }
+}
+impl Unwrap<f64> for &JavaType {
+    fn unwrap(&self) -> f64 {
+        self.unwrap_double()
+    }
+}
+impl Unwrap<bool> for JavaType {
+    fn unwrap(&self) -> bool {
+        self.unwrap_boolean()
+    }
+}
+impl Unwrap<i8> for JavaType {
+    fn unwrap(&self) -> i8 {
+        self.unwrap_byte()
+    }
+}
+impl Unwrap<i16> for JavaType {
+    fn unwrap(&self) -> i16 {
+        self.unwrap_short()
+    }
+}
+impl Unwrap<u16> for JavaType {
+    fn unwrap(&self) -> u16 {
+        self.unwrap_char()
+    }
+}
+impl Unwrap<i32> for JavaType {
+    fn unwrap(&self) -> i32 {
+        self.unwrap_int()
+    }
+}
+impl Unwrap<f32> for JavaType {
+    fn unwrap(&self) -> f32 {
+        self.unwrap_float()
+    }
+}
+impl Unwrap<i64> for JavaType {
+    fn unwrap(&self) -> i64 {
+        self.unwrap_long()
+    }
+}
+impl Unwrap<f64> for JavaType {
+    fn unwrap(&self) -> f64 {
+        self.unwrap_double()
+    }
+}
+
+impl From<bool> for JavaType {
+    fn from(val: bool) -> Self {
+        JavaType::Boolean(val)
+    }
+}
+impl From<i8> for JavaType {
+    fn from(val: i8) -> Self {
+        JavaType::Byte(val)
+    }
+}
+impl From<i16> for JavaType {
+    fn from(val: i16) -> Self {
+        JavaType::Short(val)
+    }
+}
+impl From<u16> for JavaType {
+    fn from(val: u16) -> Self {
+        JavaType::Char(val)
+    }
+}
+impl From<i32> for JavaType {
+    fn from(val: i32) -> Self {
+        JavaType::Int(val)
+    }
+}
+impl From<f32> for JavaType {
+    fn from(val: f32) -> Self {
+        JavaType::Float(val)
+    }
+}
+impl From<i64> for JavaType {
+    fn from(val: i64) -> Self {
+        JavaType::Long(val)
+    }
+}
+impl From<f64> for JavaType {
+    fn from(val: f64) -> Self {
+        JavaType::Double(val)
+    }
+}
+
 impl JavaType {
+
+    pub fn unwrap_boolean(&self) -> bool {
+        if let JavaType::Boolean(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_byte(&self) -> i8 {
+        if let JavaType::Byte(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_short(&self) -> i16 {
+        if let JavaType::Short(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_char(&self) -> u16 {
+        if let JavaType::Char(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_int(&self) -> i32 {
+        if let JavaType::Int(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_float(&self) -> f32 {
+        if let JavaType::Float(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_long(&self) -> i64 {
+        if let JavaType::Long(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
+    pub fn unwrap_double(&self) -> f64 {
+        if let JavaType::Double(val) = self {
+            *val
+        } else {
+            panic!()
+        }
+    }
     
-    /// Sets an element either of a JavaType::Array or a JavaType::Reference to an array
+    /// Gets an element either of a JavaType::Array or a JavaType::Reference to an array
     pub fn array_get(&self, ind: usize) -> JavaType {
         match self {
             Reference {val, ..} => {
@@ -982,6 +1204,38 @@ impl JavaType {
             }
         } else {
             panic!()
+        }
+    }
+    pub fn clone_arr_data(&self) -> Box<[JavaType]> {
+        if let Reference {val, ..} = self {
+            let arr = val.read().unwrap();
+            if let JavaType::Array {data, ..} = &*arr {
+                data.clone()
+            } else {
+                panic!()
+            }
+        } else {
+            panic!()
+        }
+    }
+    pub fn arr_fill(&self, fill: &JavaType) {
+        if let Reference {val, ..} = self {
+            let mut arr = val.write().unwrap();
+            if let JavaType::Array {data, ..} = &mut *arr {
+                for i in 0..data.len() {
+                    data[i] = fill.clone();
+                }
+            }
+        }
+    }
+    pub fn arr_set_all(&self, replacement: &[JavaType]) {
+        if let Reference {val, ..} = self {
+            let mut arr = val.write().unwrap();
+            if let JavaType::Array {data, ..} = &mut *arr {
+                for i in 0..data.len() {
+                    data[i] = replacement[i].clone();
+                }
+            }
         }
     }
 }

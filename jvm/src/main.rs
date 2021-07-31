@@ -1,3 +1,5 @@
+#![feature(c_variadic, vec_into_raw_parts, arbitrary_self_types)]
+
 use std::env;
 
 use env_logger::Env;
@@ -19,6 +21,7 @@ extern crate java_class;
 #[macro_use]
 extern crate log;
 extern crate zip;
+extern crate va_list;
 
 //will uncomment the following when it's time to work on the JNI
 //pub mod jni;
@@ -27,6 +30,8 @@ extern crate zip;
 pub mod types;
 pub mod jvm;
 pub mod threads;
+pub mod jni;
+pub mod jni_impl;
 
 fn main() {
     //env_logger::init();

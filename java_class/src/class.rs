@@ -152,7 +152,7 @@ impl JavaClass {
         self.access_flags & AccessFlags::Interface as u16 != 0
     }
 
-    pub fn get_name(self) -> String {
+    pub fn get_name(&self) -> String {
         match self.constant_pool[self.this_class] {
             Class { name_index } => {
                 match &self.constant_pool[name_index] {

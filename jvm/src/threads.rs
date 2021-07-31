@@ -2,7 +2,13 @@ use java_class::opcodes::Opcode;
 use types::JavaType;
 use types::Method;
 use std::sync::Arc;
+use std::sync::Condvar;
 use std::thread;
+use std::thread::JoinHandle;
+use crate::jni::JNIEnv;
+use crate::jni_impl::JniRef;
+use crate::types::Class;
+use crate::types::ClassInitStatus;
 use crate::types::RuntimeConstantPool;
 use crate::types::RuntimeConstantPoolEntry;
 use ::jvm;
@@ -13,10 +19,31 @@ macro_rules! exception {
     };
 }
 
+#[repr(C)]
 pub struct JvmThread {
+    pub jni_env: JNIEnv,
     pub pending_exception: Option<JavaType>,
     pub stack: Vec<StackFrame>,
+    pub jni_stack: Vec<JniStack>,
 }
+
+pub struct JniStack {
+    pub frames: Vec<JniStackFrame>
+}
+
+pub struct JniStackFrame {
+    pub locals: Vec<*mut JniRef>,
+}
+
+impl Drop for JniStackFrame {
+    fn drop(&mut self) {
+        for l in self.locals.iter() {
+            unsafe {Box::from_raw(*l)};
+        }
+    }
+}
+
+unsafe impl Send for JvmThread {}
 
 /// Tells the JVM whether a stack frame should be pushed or popped after an instruction was executed
 enum InstructionRunInfo {
@@ -33,18 +60,25 @@ impl JvmThread {
 
     pub fn with_args(entry: &'static Method, args: Vec<JavaType>) -> JvmThread {
         let mut ans = JvmThread {
-            pending_exception: None, stack: Vec::new()
+            jni_env: &::jni_impl::JNI_FUNCTIONS as JNIEnv,
+            pending_exception: None, stack: Vec::new(),
+            jni_stack: vec!()
         };
         let frame = StackFrame::new(entry, None, args);
         ans.stack.push(frame);
         ans
     }
 
-    pub fn start(mut self) {
-        thread::spawn(move || self.run());
+    pub fn call_from_jni(&mut self, method: &'static Method, this: Option<JavaType>, args: Vec<JavaType>) -> Option<JavaType> {
+        self.stack.push(StackFrame::new(method, this, args));
+        self.run()
     }
 
-    fn run(&mut self) {
+    pub fn start(mut self) -> JoinHandle<()> {
+        thread::spawn(move || {self.run();})
+    }
+
+    fn run(&mut self) -> Option<JavaType> {
         let mut ret = InstructionRunInfo::NoChange;
         loop {
             match ret {
@@ -83,8 +117,8 @@ impl JvmThread {
                 },
                 InstructionRunInfo::Return(val) => {
                     self.stack.pop();
-                    if self.stack.is_empty() {
-                        return;
+                    if self.stack.is_empty() || self.stack.last().unwrap().is_native {
+                        return val;
                     }
                     if let Some(val) = val {
                         let frame_index = self.stack.len() - 1;
@@ -101,6 +135,7 @@ impl JvmThread {
     fn run_inner(frame: &mut StackFrame, ins: &Opcode, cp: &RuntimeConstantPool) -> InstructionRunInfo {
         //TODO: exceptions
         use java_class::opcodes::Opcode::*;
+        trace!("running instruction {:?}", ins);
         match ins {
             aaload | baload | saload | iaload | laload | faload | daload | caload => {
                 if let JavaType::Int(index) = frame.pop() {
@@ -546,6 +581,7 @@ impl JvmThread {
             getstatic {index} => {
                 let field_desc = &cp[*index as usize];
                 if let RuntimeConstantPoolEntry::Fieldref {class, name, ..} = field_desc {
+                    ensure_class_init(class);
                     frame.push(class.fields.get(name).unwrap().value.read().unwrap().clone())
                 }
             },
@@ -557,7 +593,7 @@ impl JvmThread {
             },
             i2b => {
                 if let JavaType::Int(val) = frame.pop() {
-                    frame.push(JavaType::Byte(val as u8));
+                    frame.push(JavaType::Byte(val as i8));
                 } else {
                     panic!();
                 }
@@ -1009,7 +1045,7 @@ impl JvmThread {
                 
                 if method.is_native() {
                     //TODO: native methods
-                    panic!("Native methods are unimplemented");
+                    todo!("Native methods are unimplemented");
                 }
                 return InstructionRunInfo::Call {method, this: Some(obj), args};
             },
@@ -1025,6 +1061,7 @@ impl JvmThread {
                         panic!()
                     }
                 };
+                ensure_class_init(class);
                 //TODO: On successful resolution of the method, the class or interface that declared the resolved method is initialized (§5.5) if that class or interface has not already been initialized.
                 let m = class.resolve_static_method(name, descriptor);
                 let m = if let Ok(m) = m {
@@ -1049,7 +1086,7 @@ impl JvmThread {
                 
                 if m.is_native() {
                     //TODO: native methods
-                    panic!("Native methods are unimplemented");
+                    todo!("Native methods are unimplemented");
                 }
                 return InstructionRunInfo::Call {method: m, this: None, args};
             },
@@ -1086,7 +1123,7 @@ impl JvmThread {
                 //TODO: synchronized
                 if method.is_native() {
                     //TODO: native methods
-                    panic!("Native methods are unimplemented");
+                    todo!("Native methods are unimplemented");
                 }
                 let count = method.parameters.len();
                 let mut args = Vec::with_capacity(count);
@@ -1465,6 +1502,7 @@ impl JvmThread {
                 } else {
                     panic!();
                 };
+                ensure_class_init(class);
                 frame.push(class.instantiate());
             },
             nop => {},
@@ -1493,6 +1531,7 @@ impl JvmThread {
                 } else {
                     panic!();
                 };
+                ensure_class_init(class);
                 let val = frame.pop();
                 //TODO: initialize static class
                 let mut f = class.fields.get(name).unwrap().value.write().unwrap();
@@ -1537,6 +1576,112 @@ impl JvmThread {
         }
         InstructionRunInfo::NoChange
     }
+
+    pub fn create_jni_local(&mut self, val: JavaType) -> *mut JniRef {
+        let frame = self.jni_stack.last_mut().unwrap().frames.last_mut().unwrap();
+        let ans = JniRef::new_local(val);
+        frame.locals.push(ans);
+        ans
+    }
+
+    pub fn delete_jni_local(&mut self, val: *mut JniRef) {
+        let frames = &mut self.jni_stack.last_mut().unwrap().frames;
+        for f in frames.iter_mut().rev() {
+            let mut ind = None;
+            for (i, local) in f.locals.iter().enumerate() {
+                if *local == val {
+                    ind = Some(i);
+                    break;
+                }
+            }
+            if let Some(i) = ind {
+                let val = f.locals.swap_remove(i);
+                unsafe {JniRef::delete(val)};
+            }
+        }
+    }
+
+    pub fn push_jni_frame(&mut self) {
+        self.jni_stack.last_mut().unwrap().frames.push(JniStackFrame {locals: vec!()});
+    }
+
+    pub fn pop_jni_frame(&mut self) {
+        self.jni_stack.last_mut().unwrap().frames.pop().unwrap();
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe fn create_jni_global(&mut self, val: JavaType) -> *mut JniRef {
+        JniRef::new_global(val)
+    }
+
+    #[allow(clippy::missing_safety_doc)]
+    pub unsafe fn delete_jni_global(&mut self, val: *mut JniRef) {
+        JniRef::delete(val)
+    }
+
+}
+
+pub fn ensure_class_init(class: &'static Class) {
+    let id = thread::current().id();
+    let mut cv;
+    let mut lock = class.is_initialized.lock().unwrap();
+    loop {
+            
+        match &*lock {
+            ClassInitStatus::Initialized => {
+                return;
+            },
+            ClassInitStatus::Initializing(id2, cv2) => {
+                if id == *id2 {
+                    return;
+                }
+                cv = cv2.clone();
+                
+            },
+            _ => {
+                cv = Arc::new(Condvar::new());
+                *lock = ClassInitStatus::Initializing(id, cv.clone());
+                break;
+            }
+        }
+        lock = cv.wait(lock).unwrap();
+    }
+    drop(lock);
+    debug!("Running static initialization for {}", class.name);
+    for f in class.fields.values() {
+        if f.is_final() && f.is_static() {
+            for a in &f.attributes {
+                if let java_class::attributes::Attribute::ConstantValue {constantvalue_index} = a {
+                    let constant = &class.constant_pool[*constantvalue_index as usize];
+                    let constant = match constant {
+                        &RuntimeConstantPoolEntry::Double(d) => JavaType::Double(d),
+                        &RuntimeConstantPoolEntry::Float(f) => JavaType::Float(f),
+                        &RuntimeConstantPoolEntry::Integer(i) => JavaType::Int(i),
+                        &RuntimeConstantPoolEntry::Long(l) => JavaType::Long(l),
+                        RuntimeConstantPoolEntry::String(s) => s.clone(),
+                        _ => panic!()
+                    };
+                    let mut v = f.value.write().unwrap();
+                    *v = constant;
+                    break;
+                }
+            }
+        }
+    }
+    if !class.is_interface() && class.super_class.is_some() {
+        ensure_class_init(class.super_class.unwrap());
+    }
+    for interface in &class.interfaces {
+        ensure_class_init(interface);
+    }
+    let clinit = class.methods.get("<clinit>()V");
+    if let Some(&clinit) = clinit {
+        debug!("Running clinit for {}", class.name);
+        JvmThread::new(clinit).run();
+    }
+    *class.is_initialized.lock().unwrap() = ClassInitStatus::Initialized;
+    cv.notify_all();
+    debug!("Done running static initialization for {}", class.name);
 }
 
 pub struct StackFrame {
@@ -1544,7 +1689,8 @@ pub struct StackFrame {
     pub this: Option<JavaType>,
     pub pc: usize,
     pub stack: Vec<JavaType>,
-    pub locals: Vec<JavaType>
+    pub locals: Vec<JavaType>,
+    pub is_native: bool
 }
 
 impl StackFrame {
@@ -1552,7 +1698,7 @@ impl StackFrame {
                arguments: Vec<JavaType>) -> StackFrame {
         let stack = Vec::with_capacity(current_method.code.as_ref().unwrap().max_stack);
         //TODO: Any argument value that is of a floating-point type undergoes value set conversion (§2.8.3) prior to being stored in a local variable.
-        StackFrame { current_method, this, pc: 0, stack, locals: arguments }
+        StackFrame { current_method, this, pc: 0, stack, locals: arguments, is_native: false }
     }
 
     /// pop the value on top, and handle popping a dummy value in the case of long and doubles

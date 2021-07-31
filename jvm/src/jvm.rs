@@ -5,6 +5,7 @@ use std::fs::File;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
+use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
 use types;
 use types::{Class, ClassRef};
@@ -38,7 +39,7 @@ struct JVM {
 }
 
 /// starts the JVM
-/// # parametersClass
+/// # parameters
 /// * classpath: a list of folders or jar files to search for runtime classes
 /// * entry: the class containing the main function/entry point to execute
 pub fn start(classpath: Box<[String]>, entry_point: &str) {
@@ -65,9 +66,12 @@ pub fn start(classpath: Box<[String]>, entry_point: &str) {
         JVM_INSTANCE = ::std::mem::transmute(Box::new(Arc::new(RwLock::new(jvm))));
     }
     if let Some(entry_class) = load_class(entry_point) {
-        if let Some(main) = entry_class.methods.get("main:([:java/lang/String;)V") {
+        ensure_class_init(entry_class);
+        entry_class.methods.keys().for_each(|s| println!("{}", s));
+        if let Some(main) = entry_class.methods.get("main([Ljava/lang/String;)V") {
             let args = vec![JavaType::Null];
-            let _main_thread = JvmThread::with_args(main, args);
+            let main_thread = JvmThread::with_args(main, args);
+            main_thread.start().join().unwrap();
         }
     }
 }
@@ -318,7 +322,8 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
                 instance_fields: vec!(),
                 methods: HashMap::new(),
                 attributes: vec!(),
-                array_inner: None
+                array_inner: None,
+                is_initialized: Mutex::new(types::ClassInitStatus::Initialized)
             };
             let jvm = jvm();
             let mut jvm = jvm.write().unwrap();
@@ -344,7 +349,8 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
                 instance_fields: vec!(),
                 methods: HashMap::new(),
                 attributes: vec!(),
-                array_inner: None
+                array_inner: None,
+                is_initialized: Mutex::new(types::ClassInitStatus::Initialized)
             };
             let jvm = jvm();
             let mut jvm = jvm.write().unwrap();
@@ -384,13 +390,18 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
                 None => {
                     error!("Class could not be found");
                     panic!();
-                    return None;
+                    //return None;
                 }
             }
         }
     };
     let jc = Box::new(jc);
     debug!("Loaded .class file");
+    load_class_from_binary(jc)
+}
+
+pub fn load_class_from_binary(jc: Box<JavaClass>) -> Option<ClassRef> {
+    let name = jc.get_name();
     //load superinterfaces and superclasses
     //if the class is not java.lang.Object, attempt to load its superclass
     if name != "java/lang/Object" {
@@ -416,7 +427,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
     let class: ClassRef = Box::leak(Box::new(class));
-    jvm.classes.insert(name.to_string(), class);
+    jvm.classes.insert(name, class);
     drop(jvm);
     add_to_init(class, jc);
     Some(class)
