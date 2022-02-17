@@ -26,13 +26,14 @@ fn jvm() -> Arc<RwLock<JVM>> {
     }
 }
 
-/// struct containing all runtime information about the JVM
+/// struct containing all runtime information about the JVM'
+#[allow(clippy::upper_case_acronyms)]
 struct JVM {
     pub jars: Vec<ZipArchive<File>>,
     pub classpath: Box<[String]>,
     pub classes: HashMap<String, ClassRef>,
     pub to_load: Vec<String>,
-    pub to_init: Vec<(ClassRef, Arc<Box<JavaClass>>)>,
+    pub to_init: Vec<(ClassRef, Arc<JavaClass>)>,
     pub objects: Vec<Arc<RwLock<JavaType>>>,
     pub interned_strings: Vec<(String, JavaType)>,
     ///true if a class is currently being initialized
@@ -210,7 +211,7 @@ fn get_to_load() -> String {
     jvm.to_load.remove(0)
 }
 
-fn get_to_init() -> (ClassRef, Arc<Box<JavaClass>>) {
+fn get_to_init() -> (ClassRef, Arc<JavaClass>) {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
     let i = jvm.to_init.len() - 1;
@@ -284,10 +285,10 @@ pub fn load_class(name: &str) -> Option<ClassRef> {
     ans
 }
 
-fn add_to_init(class: ClassRef, jc: Box<JavaClass>) {
+fn add_to_init(class: ClassRef, jc: Arc<JavaClass>) {
     let jvm = jvm();
     let mut jvm = jvm.write().unwrap();
-    jvm.to_init.push((class, Arc::new(jc)));
+    jvm.to_init.push((class, jc));
 }
 
 /// Load a class using the bootstrap classloader
@@ -363,7 +364,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
             } else {
                 add_to_load(&sub_name);
             }
-            add_to_init(class, Box::new(JavaClass::empty()));
+            add_to_init(class, Arc::new(JavaClass::empty()));
             return Some(class);
         }
         _ => {}
@@ -372,7 +373,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
 
     //load the .class into a static representation
     debug!("Trying to load class {}", name);
-    let jc = match find_class_jar(&name) {
+    let jc = match find_class_jar(name) {
         Some(bytes) => {
             match JavaClass::new_from_bytes(bytes) {
                 Ok(c) => c,
@@ -383,7 +384,7 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
             }
         }
         None => {
-            match find_class(&name) {
+            match find_class(name) {
                 Some(p) => match JavaClass::new(p.to_str().unwrap()) {
                     Ok(c) => c,
                     Err(_) => return None
@@ -396,12 +397,12 @@ fn load_class_2(name: &str) -> Option<ClassRef> {
             }
         }
     };
-    let jc = Box::new(jc);
+    let jc = Arc::new(jc);
     debug!("Loaded .class file");
     load_class_from_binary(jc)
 }
 
-pub fn load_class_from_binary(jc: Box<JavaClass>) -> Option<ClassRef> {
+pub fn load_class_from_binary(jc: Arc<JavaClass>) -> Option<ClassRef> {
     let name = jc.get_name();
     //load superinterfaces and superclasses
     //if the class is not java.lang.Object, attempt to load its superclass

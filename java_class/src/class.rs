@@ -1,4 +1,4 @@
-#![allow(clippy::clippy::many_single_char_names)]
+#![allow(clippy::many_single_char_names)]
 use attributes::*;
 use attributes::Attribute::*;
 use bytecode_tools::*;
@@ -159,7 +159,7 @@ impl JavaClass {
             Class { name_index } => {
                 match &self.constant_pool[name_index] {
                     Utf8 { bytes, .. } => {
-                        str::from_utf8(&bytes).unwrap().to_owned()
+                        str::from_utf8(bytes).unwrap().to_owned()
                     }
                     _ => "Class Pool index did not point to Utf8".to_owned()
                 }
@@ -290,7 +290,7 @@ fn read_attributes(r: &mut JavaClassReader, cp: &ConstantPool) -> io::Result<Vec
                     ans
                 },
                 attributes: {
-                    read_attributes(r, &cp)?
+                    read_attributes(r, cp)?
                 },
             },
             "StackMapTable" => StackMapTable {

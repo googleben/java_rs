@@ -99,7 +99,7 @@ impl CPBuilder {
     }
 
     pub fn add_string(&mut self, s: String) -> CPIndex {
-        #[allow(clippy::clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
+        #[allow(clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
         if self.string_table.contains_key(&s) {
             self.string_table[&s]
         } else {
@@ -112,7 +112,7 @@ impl CPBuilder {
     }
 
     pub fn add_class(&mut self, name: String) -> CPIndex {
-        #[allow(clippy::clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
+        #[allow(clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
         if self.class_table.contains_key(&name) {
             self.class_table[&name]
         } else {
@@ -140,7 +140,7 @@ impl CPBuilder {
 
     pub fn add_fieldref(&mut self, c_name: String, name: String, type_: String) -> CPIndex {
         let key = c_name.to_owned()+"%"+&name+"%"+&type_;
-        #[allow(clippy::clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
+        #[allow(clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
         if self.fieldref_table.contains_key(&key) {
             self.fieldref_table[&key]
         } else {
@@ -155,7 +155,7 @@ impl CPBuilder {
 
     pub fn add_methodref(&mut self, c_name: String, name: String, type_: String) -> CPIndex {
         let key = c_name.to_owned()+"%"+&name+"%"+&type_;
-        #[allow(clippy::clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
+        #[allow(clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
         if self.methodref_table.contains_key(&key) {
             self.methodref_table[&key]
         } else {
@@ -170,7 +170,7 @@ impl CPBuilder {
 
     pub fn add_interface_methodref(&mut self, c_name: String, name: String, type_: String) -> CPIndex {
         let key = c_name.to_owned()+"%"+&name+"%"+&type_;
-        #[allow(clippy::clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
+        #[allow(clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
         if self.imethodref_table.contains_key(&key) {
             self.imethodref_table[&key]
         } else {
@@ -184,7 +184,7 @@ impl CPBuilder {
     }
 
     pub fn add_utf8(&mut self, s: String) -> CPIndex {
-        #[allow(clippy::clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
+        #[allow(clippy::map_entry)] //since we modify `self`, `.entry().or_insert()` is a pain
         if self.utf8_table.contains_key(&s) {
             self.utf8_table[&s]
         } else {
@@ -195,4 +195,10 @@ impl CPBuilder {
         }
     }
 
+}
+
+impl Default for CPBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }

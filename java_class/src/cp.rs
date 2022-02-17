@@ -8,15 +8,9 @@ pub struct ConstantPool {
     cp: Vec<CPInfo>
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct CPIndex {
     ind: u16
-}
-
-impl Default for CPIndex {
-    fn default() -> Self {
-        CPIndex {ind: 0}
-    }
 }
 
 impl From<u16> for CPIndex {

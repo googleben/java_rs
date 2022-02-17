@@ -1,3 +1,5 @@
+#![allow(clippy::if_then_panic)] //since exceptions are currently just panics
+
 use java_class::opcodes::Opcode;
 use types::JavaType;
 use types::Method;

@@ -133,16 +133,16 @@ impl Class {
         for field in &class.fields {
             if field.access_flags & (::java_class::fields::AccessFlags::Static as u16) != 0 {
                 //static field
-                let field_n = Field::new(&class, &field);
+                let field_n = Field::new(class, field);
                 self.fields.insert(field_n.name.to_owned(), field_n);
             } else {
-                let field_n = InstanceFieldInfo::new(&class, &field);
+                let field_n = InstanceFieldInfo::new(class, field);
                 self.instance_fields.push(field_n);
             }
         }
         self.methods = HashMap::new();
         for method in &class.methods {
-            let method_n = Method::new(self_ref, &class, &method)?;
+            let method_n = Method::new(self_ref, class, method)?;
             self.methods.insert(method_n.repr.to_owned(), Box::leak(Box::new(method_n)));
         }
         self.attributes = class.attributes.clone();
@@ -795,7 +795,7 @@ impl InstanceFieldInfo {
         let mut descriptor_chars = d_r_2.chars();
         let descriptor = Box::leak(parse_type_started(descriptor_chars.next().unwrap(), &mut descriptor_chars).into_boxed_str());
         let attributes = field_info.attributes.clone();
-        let class = jvm::get_or_load_class(&parse_type(&descriptor_raw)).unwrap();
+        let class = jvm::get_or_load_class(&parse_type(descriptor_raw)).unwrap();
         InstanceFieldInfo { class, access_flags, name, descriptor_raw, descriptor, attributes }
     }
 }

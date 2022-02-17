@@ -112,10 +112,10 @@ enum JavaReturnType {
 
 unsafe fn call_java_function_inner(env: *mut JNIEnv, this: Option<jobject>, method: &'static Method, class: &'static Class, args: Vec<JavaType>) -> Option<JavaReturnType> {
     let thread = get_thread(env).as_mut().unwrap();
-    let this = if let Some(this) = this {Some((this as *mut JniRef).get_ref())} else {None};
+    let this = this.map(|this| (this as *mut JniRef).get_ref());
     let method = class.resolve_method(&method.name, &method.descriptor).unwrap();
-    if let Some(ret) = thread.call_from_jni(method, this, args) {
-        Some(match ret {
+    thread.call_from_jni(method, this, args).map(|ret| 
+        match ret {
             JavaType::Reference {..} => JavaReturnType::Object(thread.create_jni_local(ret) as jobject),
             JavaType::Byte(val) => JavaReturnType::Byte(val),
             JavaType::Char(val) => JavaReturnType::Char(val),
@@ -127,9 +127,6 @@ unsafe fn call_java_function_inner(env: *mut JNIEnv, this: Option<jobject>, meth
             JavaType::Boolean(val) => JavaReturnType::Boolean(if val {JNI_TRUE} else {JNI_FALSE}),
             _ => panic!()
         })
-    } else {
-        None
-    }
 }
 
 unsafe fn call_java_function(env: *mut JNIEnv, this: Option<jobject>, method: jmethodID, class: &'static Class, mut args: VaListImpl) -> Option<JavaReturnType> {
@@ -217,7 +214,7 @@ unsafe extern "C" fn DefineClass(env: *mut JNIEnv, name: *const ::std::os::raw::
         jni_exception!("SecurityException");
         return NULL;
     }
-    let jc = Box::new(jc);
+    let jc = Arc::new(jc);
     let c = ::jvm::load_class_from_binary(jc);
     let c = if let Some(c) = c {
         c
@@ -305,7 +302,7 @@ unsafe extern "C" fn ExceptionClear(env: *mut JNIEnv) {
 }
 unsafe extern "C" fn FatalError(env: *mut JNIEnv,
                             msg: *const ::std::os::raw::c_char) {
-    panic!(from_cstr(msg))
+    panic!("{}", from_cstr(msg))
 }
 unsafe extern "C" fn PushLocalFrame(env: *mut JNIEnv, capacity: jint) -> jint {
     get_thread(env).as_mut().unwrap().push_jni_frame();

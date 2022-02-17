@@ -1,5 +1,3 @@
-#![feature(iterator_fold_self)]
-
 use std::str::Chars;
 
 #[cfg(test)]
