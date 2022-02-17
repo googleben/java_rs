@@ -25,9 +25,9 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Option<Opcode> {
         0x0f => dconst_1,
         0x10 => bipush { val: r.next8().ok()? },
         0x11 => sipush { val: r.next16().ok()? },
-        0x12 => ldc { index: r.next8().ok()? },
-        0x13 => ldc_w { index: r.next16().ok()? },
-        0x14 => ldc2_w { index: r.next16().ok()? },
+        0x12 => ldc { index: (r.next8().ok()? as u16).into() },
+        0x13 => ldc_w { index: r.next16().ok()?.into() },
+        0x14 => ldc2_w { index: r.next16().ok()?.into() },
         0x15 => iload { index: r.next8().ok()? },
         0x16 => lload { index: r.next8().ok()? },
         0x17 => fload { index: r.next8().ok()? },
@@ -211,31 +211,31 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Option<Opcode> {
         0xaf => dreturn,
         0xb0 => areturn,
         0xb1 => return_,
-        0xb2 => getstatic { index: r.next16().ok()? },
-        0xb3 => putstatic { index: r.next16().ok()? },
-        0xb4 => getfield { index: r.next16().ok()? },
-        0xb5 => putfield { index: r.next16().ok()? },
-        0xb6 => invokevirtual { index: r.next16().ok()? },
-        0xb7 => invokespecial { index: r.next16().ok()? },
-        0xb8 => invokestatic { index: r.next16().ok()? },
+        0xb2 => getstatic { index: r.next16().ok()?.into() },
+        0xb3 => putstatic { index: r.next16().ok()?.into() },
+        0xb4 => getfield { index: r.next16().ok()?.into() },
+        0xb5 => putfield { index: r.next16().ok()?.into() },
+        0xb6 => invokevirtual { index: r.next16().ok()?.into() },
+        0xb7 => invokespecial { index: r.next16().ok()?.into() },
+        0xb8 => invokestatic { index: r.next16().ok()?.into() },
         0xb9 => {
-            let ans = invokeinterface { index: r.next16().ok()?, count: r.next8().ok()? };
+            let ans = invokeinterface { index: r.next16().ok()?.into(), count: r.next8().ok()? };
             r.next8().ok()?;
             ans
         }
         0xba => {
-            let ans = invokedynamic { index: r.next16().ok()? };
+            let ans = invokedynamic { index: r.next16().ok()?.into() };
             r.next8().ok()?;
             r.next8().ok()?;
             ans
         }
-        0xbb => new { index: r.next16().ok()? },
+        0xbb => new { index: r.next16().ok()?.into() },
         0xbc => newarray { atype: r.next8().ok()? },
-        0xbd => anewarray { index: r.next16().ok()? },
+        0xbd => anewarray { index: r.next16().ok()?.into() },
         0xbe => arraylength,
         0xbf => athrow,
-        0xc0 => checkcast { index: r.next16().ok()? },
-        0xc1 => instanceof { index: r.next16().ok()? },
+        0xc0 => checkcast { index: r.next16().ok()?.into() },
+        0xc1 => instanceof { index: r.next16().ok()?.into() },
         0xc2 => monitorenter,
         0xc3 => monitorexit,
         0xc4 => {
@@ -252,7 +252,7 @@ pub fn to_opcode(r: &mut JavaClassReader, method_start: u32) -> Option<Opcode> {
                 }
             }
         }
-        0xc5 => multianewarray { index: r.next16().ok()?, dimensions: r.next8().ok()? },
+        0xc5 => multianewarray { index: r.next16().ok()?.into(), dimensions: r.next8().ok()? },
         0xc6 => ifnull { branch: r.next16().ok()? as i16 },
         0xc7 => ifnonnull { branch: r.next16().ok()? as i16 },
         0xc8 => goto_w { branch: r.next32().ok()? as i32 },
@@ -295,15 +295,17 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             0x11
         }
         ldc { index } => {
-            args.push(index);
+            args.push(index.as_u16() as u8);
             0x12
         }
         ldc_w { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0x13
         }
         ldc2_w { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0x14
@@ -611,41 +613,49 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         areturn => 0xb0,
         return_ => 0xb1,
         getstatic { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb2
         }
         putstatic { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb3
         }
         getfield { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb4
         }
         putfield { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb5
         }
         invokevirtual { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb6
         }
         invokespecial { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb7
         }
         invokestatic { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xb8
         }
         invokeinterface { index, count } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             args.push(count);
@@ -653,6 +663,7 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             0xb9
         }
         invokedynamic { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             args.push(0);
@@ -660,6 +671,7 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             0xba
         }
         new { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xbb
@@ -669,6 +681,7 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             0xbc
         }
         anewarray { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xbd
@@ -676,11 +689,13 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
         arraylength => 0xbe,
         athrow => 0xbf,
         checkcast { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xc0
         }
         instanceof { index } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             0xc1
@@ -702,6 +717,7 @@ pub fn to_bytecode(opcode: Opcode) -> (u8, Vec<u8>) {
             0xc4
         }
         multianewarray { index, dimensions } => {
+            let index = index.as_u16();
             args.push((index >> 8) as u8);
             args.push(index as u8);
             args.push(dimensions);

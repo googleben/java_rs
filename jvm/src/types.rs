@@ -1,5 +1,6 @@
 use java_class::attributes::Attribute;
 use java_class::class::JavaClass;
+use java_class::cp::CPIndex;
 use java_class::opcodes::Opcode;
 use java_class::cp_info::CPInfo;
 use java_class::fields::FieldInfo;
@@ -114,7 +115,7 @@ impl Class {
         self.name = jvm::get_name_cp(&class.constant_pool, class.this_class);
 
         // if this is java/lang/Object it has no super class
-        self.super_class = if self.name == "java/lang/Object" || class.super_class == 0 {
+        self.super_class = if self.name == "java/lang/Object" || class.super_class.as_u16() == 0 {
             None
         } else {
             //shouldn't need to guard against circular superclassing since that's done while loading the .class in ::jvm
@@ -689,11 +690,11 @@ impl RuntimeConstantPool {
     }
 }
 
-impl Index<usize> for RuntimeConstantPool {
+impl Index<CPIndex> for RuntimeConstantPool {
     type Output = RuntimeConstantPoolEntry;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.constant_pool[index - 1]
+    fn index(&self, index: CPIndex) -> &Self::Output {
+        &self.constant_pool[index.as_u16() as usize - 1]
     }
 }
 

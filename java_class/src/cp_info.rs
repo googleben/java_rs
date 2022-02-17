@@ -1,8 +1,10 @@
+use crate::cp::CPIndex;
+
 macro_rules! push_u16 {
     ($num:expr, $vec:expr) => {
         let tmp = $num;
         ($vec).push((tmp >> 8) as u8);
-        ($vec).push(*tmp as u8);
+        ($vec).push(tmp as u8);
     }
 }
 
@@ -12,7 +14,7 @@ macro_rules! push_u32 {
         ($vec).push((tmp >> 24) as u8);
         ($vec).push((tmp >> 16) as u8);
         ($vec).push((tmp >> 8) as u8);
-        ($vec).push(*tmp as u8);
+        ($vec).push(tmp as u8);
     };
 }
 
@@ -26,7 +28,7 @@ macro_rules! push_u64 {
         ($vec).push((tmp >> 24) as u8);
         ($vec).push((tmp >> 16) as u8);
         ($vec).push((tmp >> 8) as u8);
-        ($vec).push(*tmp as u8);
+        ($vec).push(tmp as u8);
     };
 }
 
@@ -34,15 +36,15 @@ macro_rules! push_u64 {
 /// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug)]
 pub enum CPInfo {
-    Class { name_index: u16 },
+    Class { name_index: CPIndex },
     //name_index
-    Fieldref { class_index: u16, name_and_type_index: u16 },
+    Fieldref { class_index: CPIndex, name_and_type_index: CPIndex },
     //class_index, name_and_type_index
-    Methodref { class_index: u16, name_and_type_index: u16 },
+    Methodref { class_index: CPIndex, name_and_type_index: CPIndex },
     //class_index, name_and_type_index
-    InterfaceMethodref { class_index: u16, name_and_type_index: u16 },
+    InterfaceMethodref { class_index: CPIndex, name_and_type_index: CPIndex },
     //class_index, name_and_type_index
-    String { string_index: u16 },
+    String { string_index: CPIndex },
     //string_index
     Integer { bytes: u32 },
     //bytes
@@ -53,15 +55,15 @@ pub enum CPInfo {
     Double { bytes: u64 },
     //bytes
     LongDoubleDummy,
-    NameAndType { name_index: u16, descriptor_index: u16 },
+    NameAndType { name_index: CPIndex, descriptor_index: CPIndex },
     //name_index, descriptor_index
     Utf8 { length: u16, bytes: Vec<u8> },
     //length, bytes
-    MethodHandle { reference_kind: u8, reference_index: u16 },
+    MethodHandle { reference_kind: u8, reference_index: CPIndex },
     //reference_kind, reference_index
-    MethodType { descriptor_index: u16 },
+    MethodType { descriptor_index: CPIndex },
     //descriptor_index
-    InvokeDynamic { bootstrap_method_attr_index: u16, name_and_type_index: u16 }, //bootstrap_method_attr_index, name_and_type_index
+    InvokeDynamic { bootstrap_method_attr_index: CPIndex, name_and_type_index: CPIndex }, //bootstrap_method_attr_index, name_and_type_index
 }
 
 impl CPInfo {
@@ -94,53 +96,53 @@ impl CPInfo {
         ans.push(self.tag());
         match self {
             CPInfo::Class { name_index } => {
-                push_u16!(name_index, ans);
+                push_u16!(name_index.as_u16(), ans);
             },
             CPInfo::Fieldref { class_index, name_and_type_index } => {
-                push_u16!(class_index, ans);
-                push_u16!(name_and_type_index, ans);
+                push_u16!(class_index.as_u16(), ans);
+                push_u16!(name_and_type_index.as_u16(), ans);
             },
             CPInfo::Methodref { class_index, name_and_type_index } => {
-                push_u16!(class_index, ans);
-                push_u16!(name_and_type_index, ans);
+                push_u16!(class_index.as_u16(), ans);
+                push_u16!(name_and_type_index.as_u16(), ans);
             },
             CPInfo::InterfaceMethodref { class_index, name_and_type_index } => {
-                push_u16!(class_index, ans);
-                push_u16!(name_and_type_index, ans);
+                push_u16!(class_index.as_u16(), ans);
+                push_u16!(name_and_type_index.as_u16(), ans);
             },
             CPInfo::String { string_index } => {
-                push_u16!(string_index, ans);
+                push_u16!(string_index.as_u16(), ans);
             },
             CPInfo::Integer { bytes } => {
-                push_u32!(bytes, ans);
+                push_u32!(*bytes, ans);
             },
             CPInfo::Float { bytes } => {
-                push_u32!(bytes, ans);
+                push_u32!(*bytes, ans);
             },
             CPInfo::Long { bytes } => {
-                push_u64!(bytes, ans);
+                push_u64!(*bytes, ans);
             },
             CPInfo::Double { bytes } => {
-                push_u64!(bytes, ans);
+                push_u64!(*bytes, ans);
             },
             CPInfo::NameAndType { name_index, descriptor_index } => {
-                push_u16!(name_index, ans);
-                push_u16!(descriptor_index, ans);
+                push_u16!(name_index.as_u16(), ans);
+                push_u16!(descriptor_index.as_u16(), ans);
             },
             CPInfo::Utf8 { length, bytes } => {
-                push_u16!(length, ans);
+                push_u16!(*length, ans);
                 ans.copy_from_slice(bytes);
             },
             CPInfo::MethodHandle { reference_kind, reference_index } => {
                 ans.push(*reference_kind);
-                push_u16!(reference_index, ans);
+                push_u16!(reference_index.as_u16(), ans);
             },
             CPInfo::MethodType { descriptor_index } => {
-                push_u16!(descriptor_index, ans);
+                push_u16!(descriptor_index.as_u16(), ans);
             },
             CPInfo::InvokeDynamic { bootstrap_method_attr_index, name_and_type_index } => {
-                push_u16!(bootstrap_method_attr_index, ans);
-                push_u16!(name_and_type_index, ans);
+                push_u16!(bootstrap_method_attr_index.as_u16(), ans);
+                push_u16!(name_and_type_index.as_u16(), ans);
             },
             CPInfo::LongDoubleDummy => {}
         }

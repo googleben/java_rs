@@ -40,6 +40,7 @@ fn main() {
     let cp = Box::new([".".to_owned()]);
     jvm::start(cp, &"Tester".to_owned());
     //println!("{:?}", jvm::load_class(&"Tester".to_owned()));
+    let _tmp = jvm::load_class("java/lang/String").unwrap();
     match jvm::load_class(&"Tester".to_owned()) {
         Some(_) => println!("ok"),
         None => println!("err")

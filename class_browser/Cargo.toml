@@ -4,11 +4,9 @@ version = "0.1.0"
 authors = ["Ben Wyatt <googleben@sbcglobal.net>"]
 
 [dependencies]
-cairo-sys-rs = "0.6.0"
-gtk = { version = "0.4.1", features = ["v3_10"] }
-gdk = "0.8.0"
-gdk-pixbuf = "0.4.0"
-glib = "0.5.0"
+glib = "=0.14.0"
+gtk = { version = "0.14.0" }
+gdk-pixbuf = "0.14.0"
 java_class = { path = "../java_class" }
 
 [profile.release]

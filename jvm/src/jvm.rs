@@ -1,4 +1,5 @@
 use java_class::class::JavaClass;
+use java_class::cp::CPIndex;
 use java_class::cp_info::CPInfo;
 use std::collections::HashMap;
 use std::fs::File;
@@ -176,7 +177,7 @@ pub fn get_name(class: &JavaClass, info: &CPInfo) -> String {
     }
 }
 
-pub fn get_name_cp(cp: &::java_class::cp::ConstantPool, index: u16) -> String {
+pub fn get_name_cp(cp: &::java_class::cp::ConstantPool, index: CPIndex) -> String {
     match &cp[index] {
         CPInfo::Class { name_index } => {
             get_name_cp(cp, *name_index)

@@ -190,7 +190,7 @@ impl JvmThread {
             },
             anewarray { index } => {
                 let len = frame.pop().cast_usize();
-                if let RuntimeConstantPoolEntry::Class(class) = cp[*index as usize] {
+                if let RuntimeConstantPoolEntry::Class(class) = cp[*index] {
                     frame.push(jvm::create_array(class, len));
                 }
             },
@@ -210,7 +210,7 @@ impl JvmThread {
                 frame.push(jvm::create_array(class, len));
             },
             multianewarray { index, dimensions } => {
-                let class = if let RuntimeConstantPoolEntry::Class(class) = cp[*index as usize] {
+                let class = if let RuntimeConstantPoolEntry::Class(class) = cp[*index] {
                     class
                 } else {
                     panic!();
@@ -281,7 +281,7 @@ impl JvmThread {
                 //TODO: breakpoints
             },
             checkcast {index} => {
-                if let RuntimeConstantPoolEntry::Class(expected) = cp[*index as usize] {
+                if let RuntimeConstantPoolEntry::Class(expected) = cp[*index] {
                     let obj = frame.pop();
                     if let JavaType::Reference {class, ..} = obj {
                         if class.instanceof(expected) {
@@ -567,7 +567,7 @@ impl JvmThread {
                 }
             },
             getfield {index} => {
-                let field_desc = &cp[*index as usize];
+                let field_desc = &cp[*index];
                 if let RuntimeConstantPoolEntry::Fieldref {name, ..} = field_desc {
                     let obj = frame.pop();
                     if obj.is_null() {
@@ -579,7 +579,7 @@ impl JvmThread {
                 }
             },
             getstatic {index} => {
-                let field_desc = &cp[*index as usize];
+                let field_desc = &cp[*index];
                 if let RuntimeConstantPoolEntry::Fieldref {class, name, ..} = field_desc {
                     ensure_class_init(class);
                     frame.push(class.fields.get(name).unwrap().value.read().unwrap().clone())
@@ -891,7 +891,7 @@ impl JvmThread {
                 }
             },
             instanceof {index} => {
-                if let RuntimeConstantPoolEntry::Class(expected) = cp[*index as usize] {
+                if let RuntimeConstantPoolEntry::Class(expected) = cp[*index] {
                     let obj = frame.pop();
                     if let JavaType::Reference {class, ..} = obj {
                         if class.instanceof(expected) {
@@ -914,7 +914,7 @@ impl JvmThread {
             },
             invokeinterface { index, count } => {
                 let (interface, name, descriptor) = {
-                    if let RuntimeConstantPoolEntry::InterfaceMethodref {class, name, descriptor} = &cp[*index as usize] {
+                    if let RuntimeConstantPoolEntry::InterfaceMethodref {class, name, descriptor} = &cp[*index] {
                         (*class, name, descriptor)
                     } else {
                         panic!()
@@ -964,7 +964,7 @@ impl JvmThread {
             },
             invokespecial {index} => {
                 //TODO: access checks
-                let (class, name, descriptor, method) = match &cp[*index as usize] {
+                let (class, name, descriptor, method) = match &cp[*index] {
                     RuntimeConstantPoolEntry::InterfaceMethodref {class, name, descriptor} => {
                         (*class, name, descriptor, class.resolve_interface_method(name, descriptor))
                     },
@@ -1050,7 +1050,7 @@ impl JvmThread {
                 return InstructionRunInfo::Call {method, this: Some(obj), args};
             },
             invokestatic {index} => {
-                let (class, name, descriptor) = match &cp[*index as usize] {
+                let (class, name, descriptor) = match &cp[*index] {
                     RuntimeConstantPoolEntry::InterfaceMethodref {class, name, descriptor} => {
                         (*class, name, descriptor)
                     },
@@ -1092,7 +1092,7 @@ impl JvmThread {
             },
             invokevirtual { index } => {
                 let (class, name, descriptor) = {
-                    if let RuntimeConstantPoolEntry::Methodref {class, name, descriptor} = &cp[*index as usize] {
+                    if let RuntimeConstantPoolEntry::Methodref {class, name, descriptor} = &cp[*index] {
                         (*class, name, descriptor)
                     } else {
                         panic!()
@@ -1309,7 +1309,7 @@ impl JvmThread {
                 frame.push(JavaType::Long(1));
             }
             ldc {index} => {
-                match &cp[*index as usize] {
+                match &cp[*index] {
                     RuntimeConstantPoolEntry::Integer(val) => {
                         frame.push(JavaType::Int(*val));
                     },
@@ -1331,7 +1331,7 @@ impl JvmThread {
                 }
             },
             ldc_w {index} => {
-                match &cp[*index as usize] {
+                match &cp[*index] {
                     RuntimeConstantPoolEntry::Integer(val) => {
                         frame.push(JavaType::Int(*val));
                     },
@@ -1353,7 +1353,7 @@ impl JvmThread {
                 }
             },
             ldc2_w { index } => {
-                match &cp[*index as usize] {
+                match &cp[*index] {
                     RuntimeConstantPoolEntry::Long(val) => {
                         frame.push(JavaType::Long(*val));
                     },
@@ -1497,7 +1497,7 @@ impl JvmThread {
                 todo!();
             },
             new {index} => {
-                let class = if let RuntimeConstantPoolEntry::Class(c) = &cp[*index as usize] {
+                let class = if let RuntimeConstantPoolEntry::Class(c) = &cp[*index] {
                     c
                 } else {
                     panic!();
@@ -1513,7 +1513,7 @@ impl JvmThread {
                 frame.pop();
             },
             putfield { index } => {
-                let name = if let RuntimeConstantPoolEntry::Fieldref {name, ..} = &cp[*index as usize] {
+                let name = if let RuntimeConstantPoolEntry::Fieldref {name, ..} = &cp[*index] {
                     name
                 } else {
                     panic!();
@@ -1526,7 +1526,7 @@ impl JvmThread {
                 obj.set_field(name, val);
             },
             putstatic { index } => {
-                let (&class, name) = if let RuntimeConstantPoolEntry::Fieldref {class, name, ..} = &cp[*index as usize] {
+                let (&class, name) = if let RuntimeConstantPoolEntry::Fieldref {class, name, ..} = &cp[*index] {
                     (class, name)
                 } else {
                     panic!();
@@ -1652,7 +1652,7 @@ pub fn ensure_class_init(class: &'static Class) {
         if f.is_final() && f.is_static() {
             for a in &f.attributes {
                 if let java_class::attributes::Attribute::ConstantValue {constantvalue_index} = a {
-                    let constant = &class.constant_pool[*constantvalue_index as usize];
+                    let constant = &class.constant_pool[*constantvalue_index];
                     let constant = match constant {
                         &RuntimeConstantPoolEntry::Double(d) => JavaType::Double(d),
                         &RuntimeConstantPoolEntry::Float(f) => JavaType::Float(f),

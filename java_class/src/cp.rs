@@ -1,11 +1,46 @@
 use cp_info::CPInfo;
-use std::ops::Index;
+use std::{fmt::{Debug, Display}, ops::Index};
 
 /// A struct representing the constant pool of a class file.
 /// 1-indexed (to emulate the Java constant pool)
 #[derive(Debug)]
 pub struct ConstantPool {
     cp: Vec<CPInfo>
+}
+
+#[derive(Clone, Copy)]
+pub struct CPIndex {
+    ind: u16
+}
+
+impl Default for CPIndex {
+    fn default() -> Self {
+        CPIndex {ind: 0}
+    }
+}
+
+impl From<u16> for CPIndex {
+    fn from(ind: u16) -> Self {
+        CPIndex {ind}
+    }
+}
+
+impl CPIndex {
+    pub fn as_u16(&self) -> u16 {
+        self.ind
+    }
+}
+
+impl Debug for CPIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.ind)
+    }
+}
+
+impl Display for CPIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.ind)
+    }
 }
 
 impl Default for ConstantPool {
@@ -41,11 +76,11 @@ impl ConstantPool {
     }
 }
 
-impl Index<u16> for ConstantPool {
+impl Index<CPIndex> for ConstantPool {
     type Output = CPInfo;
 
-    fn index(&self, index: u16) -> &CPInfo {
-        &self.cp[index as usize - 1]
+    fn index(&self, index: CPIndex) -> &CPInfo {
+        &self.cp[index.ind as usize - 1]
     }
 }
 

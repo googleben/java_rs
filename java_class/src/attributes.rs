@@ -1,11 +1,13 @@
 use opcodes::Opcode;
 
+use crate::cp::CPIndex;
+
 /// enum containing JVM Attributes
 /// for more information refer to the [JVM specification](https://docs.oracle.com/javase/specs/jvms/se8/html/index.html)
 #[derive(Debug, Clone)]
 pub enum Attribute {
     ConstantValue {
-        constantvalue_index: u16
+        constantvalue_index: CPIndex
     },
     Code {
         max_stack: u16,
@@ -24,15 +26,15 @@ pub enum Attribute {
         classes: Vec<InnerClassInfo>
     },
     EnclosingMethod {
-        class_index: u16,
-        method_index: u16,
+        class_index: CPIndex,
+        method_index: CPIndex,
     },
     Synthetic,
     Signature {
-        signature_index: u16
+        signature_index: CPIndex
     },
     SourceFile {
-        sourcefile_index: u16
+        sourcefile_index: CPIndex
     },
     SourceDebugExtenson {
         debug_extension: Vec<u8>
@@ -84,21 +86,21 @@ pub enum MethodParameterAccessFlags {
 
 #[derive(Debug, Clone)]
 pub struct MethodParameterEntry {
-    pub name_index: u16,
+    pub name_index: CPIndex,
     pub access_flags: u16,
 }
 
 #[derive(Debug, Clone)]
 pub struct BootstrapMethodsEntry {
-    pub bootstrap_method_ref: u16,
-    pub bootstrap_arguments: Vec<u16>,
+    pub bootstrap_method_ref: CPIndex,
+    pub bootstrap_arguments: Vec<CPIndex>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
     pub target_info: TargetInfo,
     pub target_path: TypePath,
-    pub type_index: u16,
+    pub type_index: CPIndex,
     pub element_value_pairs: Vec<ElementValuePair>,
 }
 
@@ -136,21 +138,21 @@ pub struct LocalVarTagetTableEntry {
 
 #[derive(Debug, Clone)]
 pub struct Annotation {
-    pub type_index: u16,
+    pub type_index: CPIndex,
     pub element_value_pairs: Vec<ElementValuePair>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ElementValuePair {
-    pub element_name_index: u16,
+    pub element_name_index: CPIndex,
     pub value: ElementValue,
 }
 
 #[derive(Debug, Clone)]
 pub enum ElementValue {
-    ConstValueIndex(u16),
-    EnumConstValue { type_name_index: u16, const_name_index: u16 },
-    ClassInfoIndex(u16),
+    ConstValueIndex(CPIndex),
+    EnumConstValue { type_name_index: CPIndex, const_name_index: CPIndex },
+    ClassInfoIndex(CPIndex),
     AnnotationValue(Annotation),
     ArrayValue(Vec<ElementValue>),
 }
@@ -159,8 +161,8 @@ pub enum ElementValue {
 pub struct LocalVariableTypeTableEntry {
     pub start_pc: u16,
     pub length: u16,
-    pub name_index: u16,
-    pub signature_index: u16,
+    pub name_index: CPIndex,
+    pub signature_index: CPIndex,
     pub index: u16,
 }
 
@@ -168,8 +170,8 @@ pub struct LocalVariableTypeTableEntry {
 pub struct LocalVariableTableEntry {
     pub start_pc: u16,
     pub length: u16,
-    pub name_index: u16,
-    pub descriptor_index: u16,
+    pub name_index: CPIndex,
+    pub descriptor_index: CPIndex,
     pub index: u16,
 }
 
@@ -181,9 +183,9 @@ pub struct LineNumberTableEntry {
 
 #[derive(Debug, Clone)]
 pub struct InnerClassInfo {
-    pub inner_class_info_index: u16,
-    pub outer_class_info_index: u16,
-    pub inner_name_index: u16,
+    pub inner_class_info_index: CPIndex,
+    pub outer_class_info_index: CPIndex,
+    pub inner_name_index: CPIndex,
     pub inner_class_access_flags: u16,
 }
 
@@ -199,7 +201,7 @@ pub enum VerificationTypeInfo {
     //5
     UninitializedThis,
     //6
-    Object { cpool_index: u16 },
+    Object { cpool_index: CPIndex },
     //7
     UninitializedVariable { offset: u16 },
     //8
@@ -230,5 +232,5 @@ pub struct ExceptionTableEntry {
     pub start_pc: u16,
     pub end_pc: u16,
     pub handler_pc: u16,
-    pub catch_type: u16,
+    pub catch_type: CPIndex,
 }

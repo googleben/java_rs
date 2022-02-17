@@ -1,4 +1,7 @@
 use gdk_pixbuf::{Colorspace, Pixbuf};
+use self::glib::Bytes;
+use gtk::prelude::{BoxExt, ButtonExt, ContainerExt, FileChooserExt, GtkMenuItemExt, GtkWindowExt, MenuShellExt, NotebookExt, NotebookExtManual, WidgetExt};
+use self::glib::IsA;
 use gtk::*;
 use gtk;
 use icon::ICON;
@@ -19,16 +22,15 @@ pub fn make_gui() {
     window.set_title("Class Browser");
     window.set_default_size(500, 700);
 
-
-    let filem = MenuItem::new_with_label("File");
+    let filem = MenuItem::with_label("File");
     let v_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
     window.add(&v_box);
 
     let menu = Menu::new();
-    let open = MenuItem::new_with_label("Open");
+    let open = MenuItem::with_label("Open");
 
     menu.append(&open);
-    filem.set_submenu(&menu);
+    filem.set_submenu(Some(&menu));
 
     let menu_bar = MenuBar::new();
     menu_bar.append(&filem);
@@ -44,9 +46,9 @@ pub fn make_gui() {
         v.push(*i);
     }
 
-    let icon_buf = Pixbuf::new_from_vec(v, Colorspace::Rgb, true, 8, 64, 64, 64 * 4);
+    let icon_buf = Pixbuf::from_bytes(&Bytes::from(&v), Colorspace::Rgb, true, 8, 64, 64, 64 * 4);
 
-    window.set_icon(&icon_buf);
+    window.set_icon(Some(&icon_buf));
 
     window.show_all();
 
@@ -74,18 +76,18 @@ fn setup_notebook(open: MenuItem) -> Rc<CNotebook> {
         let notebook = Rc::clone(&notebook_clone);
         let last_dir = Rc::clone(&last_dir);
         fchoose.connect_file_activated(move |x| {
-            let file = x.get_filename();
-            let folder = x.get_current_folder_uri();
+            let file = x.filename();
+            let folder = x.current_folder_uri();
             if let Some(folder) = folder {
                 let mut p = last_dir.lock().unwrap();
-                *p = Some(folder);
+                *p = Some(folder.as_str().to_owned());
             }
             x.close();
             match file {
                 None => {}
                 Some(f) => {
                     let p = f.as_path();
-                    let scrollw = ScrolledWindow::new(None, None);
+                    let scrollw = ScrolledWindow::builder().build();
                     let class = match JavaClass::new(p.to_str().unwrap()) {
                         Ok(a) => a,
                         Err(e) => {
@@ -126,10 +128,10 @@ impl CNotebook {
     }
 
     fn create_tab<T: IsA<Widget> + 'static>(&self, title: &str, widget: T) -> u32 {
-        let close_image = gtk::Image::new_from_icon_name("window-close",
+        let close_image = gtk::Image::from_icon_name(Some("window-close"),
                                                          IconSize::Button.into());
         let button = gtk::Button::new();
-        let label = gtk::Label::new(title);
+        let label = gtk::Label::new(Some(title));
         let tab = gtk::Box::new(Orientation::Horizontal, 0);
 
         button.set_relief(ReliefStyle::None);
